@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   limits.set(ip, limit && now - limit.at < 60_000 ? { ...limit, hits: limit.hits + 1 } : { at: now, hits: 1 });
   const lat = Number(request.nextUrl.searchParams.get("lat"));
   const lng = Number(request.nextUrl.searchParams.get("lng"));
-  const bias = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+  const bias = request.nextUrl.searchParams.has("lat") && request.nextUrl.searchParams.has("lng") && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
   const cacheKey = [q.toLowerCase(), bias ? lat.toFixed(2) : "", bias ? lng.toFixed(2) : ""].join("|");
   const hit = cache.get(cacheKey);
   if (hit && now - hit.at < 300_000) return NextResponse.json({ results: hit.data });
