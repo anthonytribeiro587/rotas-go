@@ -238,6 +238,14 @@ export default function RoutePlanner() {
         .update({ status, visited_at: status === "visited" ? new Date().toISOString() : null })
         .eq("route_id", savedRouteId).eq("client_key", id);
       if (error) setNotice("Visita atualizada neste aparelho, mas não sincronizada: " + error.message);
+    } else if (savedRouteId) {
+      try {
+        const prior: SavedPlan[] = JSON.parse(localStorage.getItem(STORAGE_HISTORY) || "[]");
+        localStorage.setItem(STORAGE_HISTORY, JSON.stringify(prior.map((plan) => plan.id === savedRouteId
+          ? { ...plan, stops: plan.stops.map((stop) => stop.id === id ? { ...stop, status } : stop) }
+          : plan
+        )));
+      } catch { /* histórico privado pode estar indisponível */ }
     }
   }
 
@@ -246,12 +254,12 @@ export default function RoutePlanner() {
     if (savedRouteId) { setNotice("Esta rota já está salva."); return; }
     setIsSaving(true);
     try {
-      const plan: SavedPlan = { id: makeId(), createdAt: new Date().toISOString(), start, end, stops, optimization };
+      const plan: SavedPlan = { id: makeId(), createdAt: new Date().toISOString(), start, end, stops, optimization, manual };
       if (supabase && user) {
         const { data, error } = await supabase.from("routes").insert({
           user_id: user.id, start_point: start, end_point: end,
           geometry: optimization.geometry, distance_meters: optimization.distanceMeters,
-          duration_seconds: optimization.durationSeconds, exact: optimization.exact
+          duration_seconds: optimization.durationSeconds, exact: optimization.exact, manual
         }).select("id").single();
         if (error) throw error;
         const routeId = data.id as string;
@@ -285,11 +293,11 @@ export default function RoutePlanner() {
     try {
       if (supabase && user) {
         const { data, error } = await supabase.from("routes")
-          .select("id, created_at, start_point, end_point, geometry, distance_meters, duration_seconds, exact, route_stops(client_key, name, address, lat, lng, position, status)")
+          .select("id, created_at, start_point, end_point, geometry, distance_meters, duration_seconds, exact, manual, route_stops(client_key, name, address, lat, lng, position, status)")
           .order("created_at", { ascending: false }).limit(30);
         if (error) throw error;
         const plans: SavedPlan[] = (data || []).map((row: any) => ({
-          id: row.id, createdAt: row.created_at, start: row.start_point, end: row.end_point,
+          id: row.id, createdAt: row.created_at, start: row.start_point, end: row.end_point, manual: row.manual,
           stops: (row.route_stops || []).sort((a: any, b: any) => a.position - b.position)
             .map((s: any) => ({ id: s.client_key, name: s.name, address: s.address, lat: s.lat, lng: s.lng, status: s.status })),
           optimization: row.geometry ? {
@@ -310,7 +318,7 @@ export default function RoutePlanner() {
   function loadPlan(plan: SavedPlan) {
     setStart(plan.start); setEnd(plan.end); setStops(plan.stops);
     setOptimization(plan.optimization);
-    setManual(!plan.optimization?.exact);
+    setManual(Boolean(plan.manual));
     setSavedRouteId(plan.id);
     setPage("plan");
     setNotice("Rota recuperada do histórico.");
