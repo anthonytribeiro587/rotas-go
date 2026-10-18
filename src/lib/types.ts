@@ -24,6 +24,7 @@ export type SavedPlan = {
   end: Point;
   stops: Visit[];
   optimization: Optimization | null;
+  manual?: boolean;
 };
 
 export type SearchResult = Omit<Point, "id">;
