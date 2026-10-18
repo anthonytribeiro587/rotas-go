@@ -23,10 +23,10 @@ export async function GET(request: NextRequest) {
   if (hit && now - hit.at < 300_000) return NextResponse.json({ results: hit.data });
   try {
     const base = process.env.PHOTON_BASE_URL || "https://photon.komoot.io";
-    const url = new URL("/api", base);
+    const url = new URL("/api/", base);
     url.searchParams.set("q", q);
     url.searchParams.set("limit", "6");
-    url.searchParams.set("lang", "pt");
+    // O idioma local é preservado pelos nomes do OSM. Não forçar lang=pt no demo.
     if (bias) { url.searchParams.set("lat", String(lat)); url.searchParams.set("lon", String(lng)); }
     const response = await fetch(url, { signal: AbortSignal.timeout(9000), headers: { Accept: "application/json" }, cache: "no-store" });
     if (!response.ok) throw new Error("Provedor de locais indisponível (" + response.status + ").");
@@ -42,7 +42,8 @@ export async function GET(request: NextRequest) {
     if (cache.size > 300) cache.clear();
     cache.set(cacheKey, { at: now, data: results });
     return NextResponse.json({ results });
-  } catch {
+  } catch (error) {
+    console.error("Photon search error", error instanceof Error ? error.message : "unknown failure");
     return NextResponse.json({ error: "Não foi possível buscar endereços agora." }, { status: 502 });
   }
 }
