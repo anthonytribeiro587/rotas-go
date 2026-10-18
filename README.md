@@ -77,3 +77,15 @@ tests/tsp.test.ts            Testes matemáticos
 O algoritmo mantém partida e destino final fixos e minimiza **distância caminhável**, não distância geográfica em linha reta.
 
 Feito para evoluir: catálogo permanente de leads, tarefas agendadas, lead visitado/pulado, histórico avançado, múltiplos usuários, cotas comerciais e acompanhamento de conversão.
+
+## Projeto Supabase provisionado
+
+O banco de desenvolvimento/produção inicial foi criado em 17/10/2026 (horário de Brasília):
+
+- Nome: `rotasgo`
+- Ref: `wzddhduxemxvdiencjan`
+- Região: `sa-east-1` (São Paulo)
+- Dashboard: https://supabase.com/dashboard/project/wzddhduxemxvdiencjan
+- URL pública: `https://wzddhduxemxvdiencjan.supabase.co`
+
+As 3 migrações deste diretório já foram aplicadas no projeto. Para conectar o frontend, preencha as variáveis `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` no ambiente de deploy, usando a chave publishable no painel **Project Settings → API Keys**. Não coloque service role em arquivos do frontend nem no GitHub. Configure também Auth → URL Configuration para o domínio da aplicação.
