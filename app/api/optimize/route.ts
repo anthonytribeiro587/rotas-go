@@ -13,7 +13,8 @@ const point = z.object({
 const requestSchema = z.object({
   start: point,
   end: point,
-  stops: z.array(point).max(18)
+  stops: z.array(point).max(18),
+  mode: z.enum(["optimize", "manual"]).optional()
 });
 const hits = new Map<string, { at: number; count: number }>();
 const BASE = "https://api.openrouteservice.org/v2";
@@ -54,15 +55,20 @@ export async function POST(request: Request) {
   try {
     const points = [body.start, ...body.stops, body.end];
     const locations = points.map((p) => [p.lng, p.lat]);
-    const matrix = await ors<{ distances: (number | null)[][]; durations: (number | null)[][] }>(
-      "/matrix/foot-walking",
-      { locations, metrics: ["distance", "duration"], units: "m" },
-      key
-    );
-    if (!Array.isArray(matrix.distances) || matrix.distances.length !== points.length) {
-      throw new Error("A matriz de distâncias retornou dados incompletos.");
+    let solution: { order: number[]; exact: boolean };
+    if (body.mode === "manual") {
+      solution = { order: body.stops.map((_, i) => i), exact: false };
+    } else {
+      const matrix = await ors<{ distances: (number | null)[][]; durations: (number | null)[][] }>(
+        "/matrix/foot-walking",
+        { locations, metrics: ["distance", "duration"], units: "m" },
+        key
+      );
+      if (!Array.isArray(matrix.distances) || matrix.distances.length !== points.length) {
+        throw new Error("A matriz de distâncias retornou dados incompletos.");
+      }
+      solution = shortestVisitOrder(matrix.distances);
     }
-    const solution = shortestVisitOrder(matrix.distances);
     const ordered = [body.start, ...solution.order.map((i) => body.stops[i]), body.end];
     const route = await ors<{
       features: { geometry: { type: string; coordinates: number[][] }; properties: { summary: { distance: number; duration: number } } }[];
