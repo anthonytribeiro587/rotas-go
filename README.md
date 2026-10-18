@@ -30,7 +30,7 @@ Sem a chave ORS, a interface abre e a busca funciona, mas o servidor retorna uma
 ### Supabase — opcional no modo de desenvolvimento
 
 1. Crie um projeto Supabase **exclusivo** para o Rotas GO.
-2. No SQL Editor, execute a migração de \`supabase/migrations/20261018004000_init_rotas_go.sql\` após revisar o SQL.
+2. No SQL Editor, execute a migração de \`supabase/migrations/20261018025740_init_rotas_go.sql\` após revisar o SQL.
 3. Configure \`NEXT_PUBLIC_SUPABASE_URL\` e \`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY\`.
 4. No Supabase Auth, configure a URL local ou de produção em **URL Configuration** e permita a mesma URL na lista de redirect URLs, para funcionar o link por e-mail.
 5. Entre pelo botão "Entrar". Rotas salvas nessa sessão irão ao seu projeto Supabase e ficarão separadas por usuário com RLS.
