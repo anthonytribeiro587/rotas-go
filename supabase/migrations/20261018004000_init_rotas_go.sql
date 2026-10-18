@@ -21,6 +21,7 @@ create table if not exists public.routes (
   distance_meters double precision,
   duration_seconds double precision,
   exact boolean,
+  manual boolean not null default false,
   created_at timestamptz not null default now()
 );
 
