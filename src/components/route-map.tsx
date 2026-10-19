@@ -59,7 +59,7 @@ export default function RouteMap({ start, end, stops, geometry, focus, pickMode 
   return <div className="relative h-full w-full">
     <MapContainer
       center={[-29.762, -51.148]}
-      zoom={13} zoomControl={false} scrollWheelZoom={false}
+      zoom={13} zoomControl={false} scrollWheelZoom={true}
       className={"h-full w-full " + (pickMode ? "map-selecting" : "")}
     >
       {/* Tiles are fetched via a same-origin caching endpoint. No browser request to an external map server. */}

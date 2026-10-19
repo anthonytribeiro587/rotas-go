@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { User } from "@supabase/supabase-js";
 import {
-  ArrowRight, Check, CheckCheck, ChevronLeft,
+  ArrowRight, Check, CheckCheck, ChevronLeft, CircleHelp, Plus, RotateCcw as RefreshCcw,
   Compass, Footprints, GripVertical, History, LogIn,
   LogOut, MapPin, Navigation2, RotateCcw, Route, Save,
-  ShieldCheck, Sparkles, Trash2, X
+  ShieldCheck, Sparkles, Trash2, X, CircleSlash, Pencil
 } from "lucide-react";
 import {
   closestCenter, DndContext, KeyboardSensor, PointerSensor, TouchSensor,
@@ -78,6 +78,10 @@ function StopRow({
           className="inline-flex h-9 items-center gap-1 rounded-xl bg-canvas px-3 text-xs font-bold text-ink">
           <Check size={13} /> {stop.status === "visited" ? "Desfazer" : "Visitei"}
         </button>
+        <button type="button" onClick={() => onStatus(stop.id, stop.status === "skipped" ? "pending" : "skipped")}
+          className="inline-flex h-9 items-center gap-1 rounded-xl bg-[#f8f3e9] px-3 text-xs font-bold text-[#886731]">
+          <CircleSlash size={13} /> {stop.status === "skipped" ? "Desfazer" : "Pular"}
+        </button>
         <button type="button" onClick={() => onRemove(stop.id)} aria-label={"Remover " + stop.name}
           className="flex h-9 w-9 items-center justify-center rounded-xl text-muted hover:bg-red-50 hover:text-red-600"><Trash2 size={15} /></button>
       </div>
@@ -96,7 +100,6 @@ export default function RoutePlanner() {
   const [savedRouteId, setSavedRouteId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [page, setPage] = useState<Page>("plan");
-  const [ready, setReady] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [showAccount, setShowAccount] = useState(false);
   const [email, setEmail] = useState("");
@@ -107,6 +110,10 @@ export default function RoutePlanner() {
   const [pickingMap, setPickingMap] = useState(false);
   const [manualPoint, setManualPoint] = useState<{ lat: number; lng: number } | null>(null);
   const [manualName, setManualName] = useState("");
+  const [showGuide, setShowGuide] = useState(false);
+  const [confirmNew, setConfirmNew] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const pendingRequest = useRef<AbortController | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -114,27 +121,13 @@ export default function RoutePlanner() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  // O planejamento atual é sempre temporário. Somente rotas salvas manualmente ficam no histórico.
+  // Limpa rascunhos antigos para não restaurar locais que o usuário apenas marcou no mapa.
   useEffect(() => {
-    try {
-      const draft = localStorage.getItem(STORAGE_DRAFT);
-      if (draft) {
-        const parsed = JSON.parse(draft);
-        setStart(parsed.start ?? null);
-        setSearchRegion(parsed.searchRegion ?? null);
-        setEnd(parsed.end ?? null);
-        setStops(Array.isArray(parsed.stops) ? parsed.stops : []);
-        setOptimization(parsed.optimization ?? null);
-        setManual(Boolean(parsed.manual));
-        setSavedRouteId(parsed.savedRouteId ?? null);
-      }
-    } catch { /* rascunho local inválido não impede uso */ }
-    setReady(true);
+    try { localStorage.removeItem(STORAGE_DRAFT); } catch { /* modo privado */ }
+    return () => { pendingRequest.current?.abort(); };
   }, []);
-  useEffect(() => {
-    if (!ready) return;
-    try { localStorage.setItem(STORAGE_DRAFT, JSON.stringify({ start, end, stops, optimization, manual, savedRouteId, searchRegion })); }
-    catch { /* navegador pode bloquear armazenamento privado */ }
-  }, [ready, start, end, stops, optimization, manual, savedRouteId, searchRegion]);
+
   useEffect(() => {
     if (!supabase) return;
     supabase.auth.getUser().then(({ data }) => setUser(data.user)).catch(() => {});
@@ -143,6 +136,9 @@ export default function RoutePlanner() {
   }, []);
 
   const completed = stops.filter((s) => s.status === "visited").length;
+  const skipped = stops.filter((s) => s.status === "skipped").length;
+  const resolved = completed + skipped;
+  const unsaved = Boolean(start || end || stops.length) && !savedRouteId;
   const next = stops.find((s) => s.status === "pending") || (optimization ? end : null);
   const mapCenter = searchRegion || start || stops[0] || end || null;
   const canOptimize = Boolean(start && end && stops.length && !isOptimizing);
@@ -155,9 +151,44 @@ export default function RoutePlanner() {
   }, [notice]);
 
   function clearComputed() {
+    pendingRequest.current?.abort();
+    pendingRequest.current = null;
+    setIsOptimizing(false);
     setOptimization(null);
     setManual(false);
     setSavedRouteId(null);
+  }
+  function clearPoint(which: "start" | "end") {
+    if (which === "start") setStart(null);
+    else setEnd(null);
+    clearComputed();
+  }
+  function resetRoute() {
+    pendingRequest.current?.abort();
+    pendingRequest.current = null;
+    setStart(null); setEnd(null); setStops([]); setOptimization(null);
+    setManual(false); setSavedRouteId(null);
+    setSearchRegion(null); setShowRegionSearch(false); setManualPoint(null);
+    setManualName(""); setPickingMap(false); setIsOptimizing(false);
+    setPage("plan"); setConfirmNew(false); setNotice("Novo roteiro iniciado. O histórico salvo permanece disponível.");
+  }
+  async function deletePlan(id: string) {
+    if (!window.confirm("Excluir esta rota salva? Não é possível desfazer.")) return;
+    setDeletingId(id);
+    try {
+      if (supabase && user) {
+        const { error } = await supabase.from("routes").delete().eq("id", id);
+        if (error) throw error;
+      } else {
+        const plans: SavedPlan[] = JSON.parse(localStorage.getItem(STORAGE_HISTORY) || "[]");
+        localStorage.setItem(STORAGE_HISTORY, JSON.stringify(plans.filter(plan => plan.id !== id)));
+      }
+      setHistory(previous => previous.filter(plan => plan.id !== id));
+      if (savedRouteId === id) setSavedRouteId(null);
+      setNotice("Rota excluída do histórico.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Não foi possível excluir a rota.");
+    } finally { setDeletingId(null); }
   }
   function setPoint(which: "start" | "end", item: SearchResult) {
     const point = { ...item, id: makeId() };
@@ -215,7 +246,10 @@ export default function RoutePlanner() {
   }
 
   async function calculate(nextStops = stops, keepOrder = false) {
-    if (!start || !end || nextStops.length === 0) { setNotice("Defina partida, destino final e pelo menos uma visita."); return; }
+    if (!start || !end || nextStops.length === 0) { setNotice("Adicione ao menos uma visita e defina partida e chegada."); return; }
+    pendingRequest.current?.abort();
+    const controller = new AbortController();
+    pendingRequest.current = controller;
     setIsOptimizing(true);
     setOptimization(null);
     setSavedRouteId(null);
@@ -224,9 +258,11 @@ export default function RoutePlanner() {
       const response = await fetch("/api/optimize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ start, end, stops: nextStops, mode: keepOrder ? "manual" : "optimize" })
+        body: JSON.stringify({ start, end, stops: nextStops, mode: keepOrder ? "manual" : "optimize" }),
+        signal: controller.signal
       });
       const result = await response.json();
+      if (pendingRequest.current !== controller) return;
       if (!response.ok) throw new Error(result.error || "Erro no serviço de roteamento.");
       const optimized: Optimization = {
         order: result.order, geometry: result.geometry,
@@ -241,8 +277,12 @@ export default function RoutePlanner() {
           ? "Melhor sequência matemática encontrada para estas visitas."
           : "Sequência eficiente calculada por aproximação.");
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Não foi possível calcular a rota.");
-    } finally { setIsOptimizing(false); }
+      if (!controller.signal.aborted && pendingRequest.current === controller) {
+        setNotice(error instanceof Error ? error.message : "Não foi possível calcular a rota.");
+      }
+    } finally {
+      if (pendingRequest.current === controller) { pendingRequest.current = null; setIsOptimizing(false); }
+    }
   }
 
   function onDragEnd(event: DragEndEvent) {
@@ -348,12 +388,12 @@ export default function RoutePlanner() {
     setManual(Boolean(plan.manual));
     setSavedRouteId(plan.id);
     setPage("plan");
-    setNotice("Rota recuperada do histórico.");
+    setNotice("Rota recuperada do histórico. Ao sair, abra novamente pelo Histórico.");
   }
 
   async function sendMagicLink() {
     if (!supabase) { setNotice("Configure as variáveis públicas do Supabase primeiro."); return; }
-    if (!email.includes("@")) { setNotice("Informe um e-mail válido."); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setNotice("Informe um e-mail válido."); return; }
     const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: window.location.origin } });
     setNotice(error ? "Erro ao enviar acesso: " + error.message : "Enviamos um link de acesso para seu e-mail.");
     if (!error) setShowAccount(false);
@@ -372,6 +412,7 @@ export default function RoutePlanner() {
         </div>
       </div>
       <div className="flex items-center gap-2">
+        <button type="button" onClick={() => setConfirmNew(true)} className="flex h-10 items-center gap-1.5 rounded-xl border border-[#e3eae4] bg-white px-3 text-xs font-bold text-[#486256] hover:bg-canvas" aria-label="Criar novo roteiro"><Plus size={17}/><span className="hidden sm:inline">Novo</span></button>
         <button type="button" onClick={() => void openHistory()} className="flex h-10 items-center gap-2 rounded-xl border border-[#e3eae4] bg-white px-3 text-xs font-bold text-[#486256] hover:bg-canvas" aria-label="Abrir histórico"><History size={17}/><span className="hidden sm:inline">Histórico</span></button>
         <button type="button" onClick={() => setShowAccount(!showAccount)} className="flex h-10 items-center gap-2 rounded-xl bg-ink px-3.5 text-xs font-bold text-white hover:bg-[#25483c]" aria-label="Conta do usuário">
           {user ? <ShieldCheck size={17}/> : <LogIn size={17}/>}<span className="hidden sm:inline">{user ? "Minha conta" : "Entrar"}</span>
@@ -401,18 +442,31 @@ export default function RoutePlanner() {
         <div className="mx-auto max-w-[660px] px-4 pb-6 pt-6 sm:px-7 lg:pt-7">
           {page === "history" ? <>
             <button type="button" onClick={() => setPage("plan")} className="mb-5 flex items-center gap-1 text-sm font-bold text-accent"><ChevronLeft size={20}/> Voltar ao planejamento</button>
-            <div className="mb-5"><h1 className="text-[26px] font-black tracking-[-.045em]">Histórico de rotas</h1><p className="mt-1 text-sm text-muted">Retome um roteiro salvo para continuar suas visitas.</p></div>
+            <div className="mb-5"><h1 className="text-[26px] font-black tracking-[-.045em]">Histórico de rotas</h1><p className="mt-1 text-sm text-muted">Apenas rotas que você salvou aparecem aqui. Escolha uma para continuar.</p></div>
             {historyBusy ? <p className="py-8 text-center text-sm text-muted">Carregando rotas...</p> : history.length ? <div className="space-y-3">
-              {history.map((plan) => <button type="button" key={plan.id} onClick={() => loadPlan(plan)} className="flex w-full items-center gap-3 rounded-2xl border border-line bg-white p-4 text-left hover:border-accent">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#e9f4e8] text-accent"><Route size={21}/></div>
-                <div className="min-w-0 flex-1"><p className="text-sm font-extrabold">{new Date(plan.createdAt).toLocaleDateString("pt-BR",{day:"2-digit",month:"long"})}</p><p className="mt-0.5 truncate text-xs text-muted">{plan.stops.length} visitas · {plan.optimization ? meters(plan.optimization.distanceMeters) : "Sem cálculo"}</p><p className="mt-1 truncate text-[11px] text-muted">{plan.start.name} → {plan.end.name}</p></div><ArrowRight className="shrink-0 text-accent" size={18}/>
-              </button>)}
+              {history.map((plan) => <div key={plan.id} className="flex items-center gap-2 rounded-2xl border border-line bg-white p-2 hover:border-[#b2d8bd]">
+                <button type="button" onClick={() => loadPlan(plan)} className="flex min-w-0 flex-1 items-center gap-3 p-2 text-left" aria-label={"Abrir rota de " + new Date(plan.createdAt).toLocaleDateString("pt-BR")}>
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#e9f4e8] text-accent"><Route size={21}/></div>
+                  <div className="min-w-0 flex-1"><p className="text-sm font-extrabold">{new Date(plan.createdAt).toLocaleDateString("pt-BR",{day:"2-digit",month:"long"})}</p><p className="mt-0.5 truncate text-xs text-muted">{plan.stops.length} visitas · {plan.optimization ? meters(plan.optimization.distanceMeters) : "Sem cálculo"}</p><p className="mt-1 truncate text-[11px] text-muted">{plan.start.name} → {plan.end.name}</p></div><ArrowRight className="shrink-0 text-accent" size={17}/>
+                </button>
+                <button type="button" disabled={deletingId === plan.id} aria-label="Excluir rota salva" title="Excluir rota salva" onClick={() => void deletePlan(plan.id)} className="flex h-11 w-10 shrink-0 items-center justify-center rounded-xl text-muted hover:bg-red-50 hover:text-red-600"><Trash2 size={17}/></button>
+              </div>)}
             </div> : <div className="rounded-2xl border border-dashed border-line bg-canvas px-5 py-10 text-center"><History className="mx-auto mb-3 text-muted" size={27}/><p className="font-bold">Nenhuma rota salva ainda</p><p className="mt-1 text-sm text-muted">Seu histórico aparecerá aqui.</p></div>}
           </> : <>
             <div className="mb-6">
               <p className="mb-1 text-[12px] font-bold text-accent">Planejamento do dia</p>
               <h1 className="text-[27px] font-black leading-tight tracking-[-.05em] text-ink sm:text-[30px]">Sua rota, sem voltas.</h1>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-muted">Escolha os locais, defina partida e chegada e encontre o caminho a pé.</p>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-muted">Adicione as visitas, escolha de onde sair e toque em otimizar.</p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-lg bg-[#eef6ef] px-2.5 py-1.5 text-[11px] font-bold text-accent"><Check size={13}/> Roteiro temporário</span>
+                <button type="button" onClick={() => setShowGuide(value => !value)} aria-expanded={showGuide} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-bold text-[#486256] hover:bg-[#eff4ef]"><CircleHelp size={14}/> {showGuide ? "Ocultar ajuda" : "Como funciona?"}</button>
+              </div>
+              {showGuide ? <div className="mt-3 rounded-xl border border-[#dce9df] bg-[#f6faf6] px-4 py-3 text-[12px] leading-relaxed text-[#385646]">
+                <p><strong>1.</strong> Busque um estabelecimento ou marque no mapa.</p>
+                <p className="mt-1"><strong>2.</strong> Defina partida e destino; você pode terminar no mesmo lugar.</p>
+                <p className="mt-1"><strong>3.</strong> Otimize, navegue até as lojas e marque as visitas.</p>
+                <p className="mt-2 border-t border-[#dce9df] pt-2"><strong>Privacidade:</strong> o roteiro só permanece após fechar a página se você clicar em <strong>Salvar</strong>. Rotas salvas ficam no Histórico (neste aparelho sem login, ou na sua conta se entrar).</p>
+              </div> : null}
             </div>
 
             <div className="mb-3 flex items-center justify-between gap-2">
@@ -433,8 +487,8 @@ export default function RoutePlanner() {
             </div>
 
             {stops.length ? <div className="mt-4 space-y-2">
-              <div className="mb-1 flex items-center justify-between"><p className="text-[12px] font-bold text-[#597367]">Minhas visitas</p><span className="text-[11px] font-semibold text-accent">{completed}/{stops.length} concluídas</span></div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#eaf0e9]"><div className="h-full rounded-full bg-accent transition-all" style={{width:(completed / stops.length * 100)+"%"}}/></div>
+              <div className="mb-1 flex items-center justify-between"><p className="text-[12px] font-bold text-[#597367]">Minhas visitas</p><span className="text-[11px] font-semibold text-accent">{completed} visitadas{skipped ? " · " + skipped + " puladas" : ""} / {stops.length}</span></div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#eaf0e9]"><div className="h-full rounded-full bg-accent transition-all" style={{width:(resolved / stops.length * 100)+"%"}}/></div>
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
                 <SortableContext items={stopsIds} strategy={verticalListSortingStrategy}>
                   <div className="space-y-2.5 pt-1">{stops.map((stop,index)=><StopRow key={stop.id} stop={stop} index={index} isNext={next?.id === stop.id && stop.status==="pending"} onStatus={(id,status)=>void markStatus(id,status)} onRemove={removeStop}/>)}</div>
@@ -449,18 +503,20 @@ export default function RoutePlanner() {
             <div className="mb-3 mt-7 flex items-center gap-2.5"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#e8f4eb] text-xs font-black text-accent">2</span><h2 className="text-[16px] font-extrabold tracking-[-.025em]">Partida e chegada</h2></div>
             <div className="rounded-2xl border border-[#e0e9e0] bg-white p-4 shadow-[0_3px_15px_rgba(14,50,34,.03)]">
               <div className="relative space-y-4 before:absolute before:bottom-[65px] before:left-[6px] before:top-[22px] before:w-px before:border-l before:border-dashed before:border-[#afc8b5]">
-                <div className="relative"><LocationSearch label="De onde você vai sair?" placeholder="Sua localização, endereço ou ponto de partida" current={start} center={mapCenter} allowGeolocation onGeolocation={useMyLocation} onPick={item=>setPoint("start",item)}/></div>
-                <div className="relative"><LocationSearch label="Onde quer terminar?" placeholder="Endereço de chegada" current={end} center={mapCenter} onPick={item=>setPoint("end",item)}/></div>
+                <div className="relative"><LocationSearch label="De onde você vai sair?" placeholder="Sua localização, endereço ou ponto de partida" current={start} center={mapCenter} allowGeolocation onGeolocation={useMyLocation} onPick={item=>setPoint("start",item)} onClear={()=>clearPoint("start")}/></div>
+                <div className="relative"><LocationSearch label="Onde quer terminar?" placeholder="Endereço de chegada" current={end} center={mapCenter} onPick={item=>setPoint("end",item)} onClear={()=>clearPoint("end")}/></div>
               </div>
+              {start ? <button type="button" className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-[#d2e5d6] bg-[#f4faf4] px-3 py-2.5 text-xs font-bold text-accent hover:bg-[#e6f4e8]" onClick={() => setPoint("end", { name: start.name, address: start.address, lat: start.lat, lng: start.lng })}><RotateCcw size={14}/> Terminar no ponto de partida</button> : null}
             </div>
 
             {optimization && next ? <div className="mt-5 rounded-2xl border border-[#cfe5d6] bg-[#eaf6ee] p-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent text-white"><Compass size={21}/></div>
-                <div className="min-w-0 flex-1"><p className="mb-0.5 text-[11px] font-bold text-accent">{completed === stops.length ? "Próximo: destino final" : "Próxima visita"}</p><p className="truncate text-[14px] font-extrabold">{next.name}</p></div>
+                <div className="min-w-0 flex-1"><p className="mb-0.5 text-[11px] font-bold text-accent">{stops.some(s=>s.status==="pending") ? "Próxima visita" : "Próximo: destino final"}</p><p className="truncate text-[14px] font-extrabold">{next.name}</p></div>
                 <a className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-accent shadow-sm" href={mapsLink(next)} target="_blank" rel="noopener noreferrer" aria-label={"Navegar para "+next.name}><Navigation2 size={19}/></a>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2 border-t border-[#d0e5d5] pt-3"><div><p className="text-[11px] text-muted">Distância a pé</p><p className="text-[18px] font-black">{meters(optimization.distanceMeters)}</p></div><div><p className="text-[11px] text-muted">Tempo estimado</p><p className="text-[18px] font-black">{duration(optimization.durationSeconds)}</p></div></div>
+              {optimization.distanceMeters > 25000 ? <p className="mt-3 rounded-lg bg-white/75 px-3 py-2 text-[12px] font-semibold text-[#7d5a2e]">Roteiro longo: confira os endereços das lojas e o ponto final antes de caminhar.</p> : null}
             </div> : null}
           </>}
         </div>
@@ -478,6 +534,9 @@ export default function RoutePlanner() {
       </form>
       <button type="button" onClick={()=>{setManualPoint(null);openMapPicker();}} className="mt-2 text-[11px] font-bold text-accent">Escolher outro ponto</button>
     </div> : null}
+    {confirmNew ? <div role="dialog" aria-modal="true" aria-label="Novo roteiro" className="fixed inset-0 z-[1800] flex items-center justify-center bg-[#0c261d]/45 px-4">
+      <div className="w-full max-w-[380px] rounded-2xl bg-white p-5 shadow-2xl"><h2 className="text-lg font-extrabold text-ink">Começar novo roteiro?</h2><p className="mt-2 text-sm leading-relaxed text-muted">{unsaved ? "O roteiro atual não foi salvo e será descartado." : "O mapa e as visitas atuais serão limpos. Suas rotas salvas continuarão no Histórico."}</p><div className="mt-5 flex gap-2"><button type="button" onClick={()=>setConfirmNew(false)} className="h-11 flex-1 rounded-xl border border-line text-sm font-bold">Cancelar</button><button type="button" onClick={resetRoute} className="h-11 flex-1 rounded-xl bg-accent text-sm font-bold text-white">Novo roteiro</button></div></div>
+    </div> : null}
     {page === "plan" ? <div className="action-dock safe-bottom fixed inset-x-0 bottom-0 z-[1100] border-t border-[#e5ece6] bg-white/95 px-4 pt-3 shadow-[0_-6px_30px_rgba(11,45,28,.07)] backdrop-blur-xl sm:px-6">
       <div className="mx-auto flex max-w-[640px] items-center gap-2">
         <Button variant="primary" size="lg" className="min-w-0 flex-1 rounded-xl shadow-sm" disabled={!canOptimize} onClick={() => void calculate()}>
@@ -487,7 +546,7 @@ export default function RoutePlanner() {
           {savedRouteId ? <CheckCheck size={21} className="text-accent"/> : <Save size={21}/>}
         </Button>
       </div>
-      <p className="mt-1.5 text-center text-[11px] text-muted">{savedRouteId ? "Rota salva" : optimization ? "Rota pronta. Navegue até cada visita pelo GPS." : !start || !end ? "Adicione as visitas e defina partida e chegada." : "Encontre a menor sequência a pé."}</p>
+      <p className="mt-1.5 text-center text-[11px] text-muted">{savedRouteId ? "Rota salva no Histórico. A próxima visita continua aqui." : optimization ? "Rota pronta! Clique no ícone de salvar para guardar no Histórico." : !stops.length ? "Primeiro, adicione um estabelecimento." : !start ? "Defina onde sua caminhada começa." : !end ? "Defina onde termina (ou escolha voltar à partida)." : "Pronto para encontrar a melhor ordem de visitas."}</p>
     </div> : null}
     {notice ? <div role="status" className="fixed bottom-[112px] left-1/2 z-[1500] flex w-[min(460px,calc(100vw-24px))] -translate-x-1/2 items-center gap-3 rounded-xl bg-ink px-4 py-3 text-white shadow-float lg:bottom-6">
       <p className="flex-1 text-[12px] font-semibold leading-relaxed">{notice}</p><button type="button" onClick={() => setNotice("")} aria-label="Fechar aviso"><X size={17}/></button>

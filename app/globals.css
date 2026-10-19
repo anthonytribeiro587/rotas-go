@@ -45,3 +45,6 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
   .planner-layout { grid-template-columns: minmax(520px, 610px) minmax(0, 1fr); }
   .action-dock { width: 610px; }
 }
+
+/* Só o mapa recebe wheel-zoom; o formulário lateral mantém sua própria rolagem. */
+.map-panel .leaflet-container { overscroll-behavior: contain; }
