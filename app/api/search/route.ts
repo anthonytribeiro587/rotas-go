@@ -78,7 +78,7 @@ async function searchPhoton(q: string, center: { lat: number; lng: number } | nu
   const important = norm(q).split(/\s+/).filter(t => t.length >= 3 && !["rua", "avenida", "av", "das", "dos", "para", "com"].includes(t));
   return places
     // Evita sugerir, por exemplo, uma loja a 110 km em outra cidade com nome parecido.
-    .filter(p => cityOnly || !center || (p.distanceKm ?? 0) < 50 || important.every(t => norm(p.name + " " + p.address).includes(t)))
+    .filter(p => cityOnly ? norm(p.name).includes(norm(q)) : !center || (p.distanceKm ?? 0) < 50 || important.every(t => norm(p.name + " " + p.address).includes(t)))
     .sort((a, b) => relevance(b, q, center) - relevance(a, q, center))
     .filter(p => {
       const key = norm(p.name) + "|" + p.lat.toFixed(4) + "|" + p.lng.toFixed(4);
