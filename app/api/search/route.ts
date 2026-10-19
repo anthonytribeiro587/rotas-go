@@ -63,7 +63,6 @@ async function searchPhoton(q: string, center: { lat: number; lng: number } | nu
   url.searchParams.set("q", q);
   url.searchParams.set("limit", "15");
   url.searchParams.set("countrycode", "BR");
-  url.searchParams.set("lang", "pt");
   if (center) {
     url.searchParams.set("lat", String(center.lat));
     url.searchParams.set("lon", String(center.lng));
