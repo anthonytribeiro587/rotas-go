@@ -104,6 +104,9 @@ export default function RoutePlanner() {
   const [historyBusy, setHistoryBusy] = useState(false);
   const [searchRegion, setSearchRegion] = useState<SearchResult | null>(null);
   const [showRegionSearch, setShowRegionSearch] = useState(false);
+  const [pickingMap, setPickingMap] = useState(false);
+  const [manualPoint, setManualPoint] = useState<{ lat: number; lng: number } | null>(null);
+  const [manualName, setManualName] = useState("");
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -173,6 +176,21 @@ export default function RoutePlanner() {
     clearComputed();
     setNotice("");
   }
+  function addMapStop() {
+    if (!manualPoint) return;
+    const name = manualName.trim();
+    if (!name) { setNotice("Dê um nome para o local marcado."); return; }
+    addStop({ name, address: "Ponto marcado no mapa · " + manualPoint.lat.toFixed(5) + ", " + manualPoint.lng.toFixed(5), ...manualPoint });
+    setManualPoint(null);
+    setManualName("");
+    setPickingMap(false);
+  }
+  function openMapPicker() {
+    setPickingMap(true);
+    setManualPoint(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   function removeStop(id: string) {
     setStops((v) => v.filter((s) => s.id !== id));
     clearComputed();
@@ -369,11 +387,12 @@ export default function RoutePlanner() {
 
     <main className="planner-layout">
       <section className="map-panel" aria-label="Mapa do percurso">
-        <RouteMap start={start} end={end} stops={stops} geometry={optimization?.geometry || []}/>
+        <RouteMap start={start} end={end} stops={stops} geometry={optimization?.geometry || []} focus={searchRegion} pickMode={pickingMap} draftPoint={manualPoint} onPick={(point)=>{setManualPoint(point);setPickingMap(false);}}/>
         <div className="pointer-events-none absolute left-4 top-4 z-[500] rounded-xl border border-white/90 bg-white/95 px-3 py-2 shadow-[0_4px_16px_rgba(19,48,33,.09)] lg:left-9 lg:top-9">
           <div className="flex items-center gap-2 text-[11px] font-extrabold text-ink"><span className="h-2 w-2 rounded-full bg-accent"/> Mapa da rota</div>
           <p className="mt-0.5 text-[10px] text-muted">{optimization ? "Percurso calculado pelas ruas" : stops.length ? stops.length + " locais adicionados" : "Seus locais aparecerão aqui"}</p>
         </div>
+        {pickingMap ? <div className="pointer-events-none absolute inset-x-5 top-[78px] z-[600] mx-auto max-w-[360px] rounded-xl bg-ink px-4 py-3 text-center text-[12px] font-bold leading-relaxed text-white shadow-xl lg:top-24">Toque na posição exata do estabelecimento no mapa</div> : null}
         {optimization ? <div className="pointer-events-none absolute right-4 top-4 z-[500] flex items-center gap-2 rounded-xl bg-ink px-3 py-2 text-xs font-bold text-white shadow-lg lg:right-9 lg:top-9"><Footprints size={15}/> {meters(optimization.distanceMeters)}</div> : null}
         <div className="pointer-events-none absolute bottom-7 left-4 z-[500] flex items-center gap-3 rounded-xl bg-white/95 px-3 py-2 text-[10px] font-bold text-muted lg:bottom-10 lg:left-9"><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-ink"/> Origem</span><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-accent"/> Visitas</span><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#e19c41]"/> Fim</span></div>
       </section>
@@ -410,6 +429,7 @@ export default function RoutePlanner() {
                 <LocationSearch label="Priorizar buscas nesta cidade ou bairro" placeholder="Ex.: Canoas, RS" center={searchRegion || start} current={searchRegion} onClear={() => setSearchRegion(null)} onPick={item => { setSearchRegion(item); setShowRegionSearch(false); setNotice("Busca priorizando a região de " + item.name + "."); }}/>
                 <p className="mt-2 text-[11px] leading-relaxed text-muted">Isso melhora a ordem das sugestões, sem impedir buscas em outras cidades.</p>
               </div> : null}
+              <button type="button" onClick={openMapPicker} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#b9cfc0] bg-white px-3 py-2.5 text-xs font-bold text-accent transition-colors hover:bg-[#eff7f0]"><MapPin size={15}/> Não encontrou o estabelecimento? Marcar no mapa</button>
             </div>
 
             {stops.length ? <div className="mt-4 space-y-2">
@@ -447,6 +467,17 @@ export default function RoutePlanner() {
       </section>
     </main>
 
+    {manualPoint ? <div className="fixed inset-x-3 bottom-[100px] z-[1450] mx-auto max-w-[420px] rounded-2xl border border-[#c9dfce] bg-white p-4 shadow-[0_18px_55px_rgba(8,48,28,.2)]">
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <div><p className="text-[14px] font-extrabold text-ink">Local marcado no mapa</p><p className="mt-0.5 text-[11px] text-muted">Digite um nome para adicionar a visita.</p></div>
+        <button type="button" className="p-1 text-muted" aria-label="Cancelar ponto no mapa" onClick={()=>{setManualPoint(null);setManualName("");}}><X size={18}/></button>
+      </div>
+      <form onSubmit={event=>{event.preventDefault();addMapStop();}} className="flex items-center gap-2">
+        <input autoFocus maxLength={120} className="h-11 min-w-0 flex-1 rounded-xl border border-line bg-[#f8faf8] px-3 text-[13px] outline-none focus:border-accent" placeholder="Nome do comércio" value={manualName} onChange={event=>setManualName(event.target.value)}/>
+        <button type="submit" className="h-11 shrink-0 rounded-xl bg-accent px-4 text-xs font-bold text-white">Adicionar</button>
+      </form>
+      <button type="button" onClick={()=>{setManualPoint(null);openMapPicker();}} className="mt-2 text-[11px] font-bold text-accent">Escolher outro ponto</button>
+    </div> : null}
     {page === "plan" ? <div className="action-dock safe-bottom fixed inset-x-0 bottom-0 z-[1100] border-t border-[#e5ece6] bg-white/95 px-4 pt-3 shadow-[0_-6px_30px_rgba(11,45,28,.07)] backdrop-blur-xl sm:px-6">
       <div className="mx-auto flex max-w-[640px] items-center gap-2">
         <Button variant="primary" size="lg" className="min-w-0 flex-1 rounded-xl shadow-sm" disabled={!canOptimize} onClick={() => void calculate()}>
