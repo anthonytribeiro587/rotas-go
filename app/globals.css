@@ -38,7 +38,9 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
   .map-panel { grid-column: 2; grid-row: 1; height: calc(100dvh - 72px); min-height: 0; order: 2; padding: 17px; background: #f1f5f1; }
   .map-panel .leaflet-container { border-radius: 18px; box-shadow: 0 0 0 1px #e0e8e2; }
   .sheet { grid-column: 1; grid-row: 1; margin-top: 0; border-radius: 0; height: calc(100dvh - 72px); min-height: 0; overflow-y: auto; box-shadow: none; border-right: 1px solid #e9edea; padding-bottom: 128px; }
+  .action-dock { right: auto; width: 575px; }
 }
 @media (min-width: 1440px) {
   .planner-layout { grid-template-columns: minmax(520px, 610px) minmax(0, 1fr); }
+  .action-dock { width: 610px; }
 }
