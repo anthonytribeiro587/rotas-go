@@ -46,7 +46,8 @@ export default function RouteMap({ start, end, stops, geometry, focus, pickMode 
     return trip.length ? trip : focus ? [{ ...focus, id: "focus", name: "Região da busca", address: "" }] : [];
   }, [start, stops, end, focus]);
   return <MapContainer center={[-29.762, -51.148]} zoom={13} zoomControl={false} scrollWheelZoom={false} className={"h-full w-full " + (pickMode ? "map-selecting" : "")}>
-    <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" subdomains="abcd" maxZoom={19} attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>' />
+    {/* OSM Standard: raster tiles without CARTO API key. No key or external secret in browser. */}
+    <TileLayer url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" maxZoom={19} maxNativeZoom={19} attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' />
     <MapBounds points={points} />
     <MapPicker enabled={pickMode} onPick={onPick}/>
     <ZoomControl position="bottomright" />
