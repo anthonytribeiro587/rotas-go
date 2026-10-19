@@ -24,7 +24,8 @@
     "tailwind-merge": "^2.6.0",
     "zod": "^3.25.76",
     "leaflet": "^1.9.4",
-    "react-leaflet": "^5.0.0"
+    "react-leaflet": "^5.0.0",
+    "read-excel-file": "^9.3.12"
   },
   "devDependencies": {
     "@types/node": "^22.18.0",
