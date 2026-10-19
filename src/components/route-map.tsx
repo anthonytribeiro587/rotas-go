@@ -29,9 +29,9 @@ function pin(text: string, kind: "start" | "end" | "stop", visited = false) {
 export default function RouteMap({ start, end, stops, geometry }: Props) {
   const points = useMemo(() => [start, ...stops, end].filter((p): p is Point => Boolean(p)), [start, stops, end]);
   return <MapContainer center={[-29.762, -51.148]} zoom={13} zoomControl={false} scrollWheelZoom={false} className="h-full w-full">
-    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" maxZoom={19} attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' />
+    <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" subdomains="abcd" maxZoom={19} attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>' />
     <MapBounds points={points} />
-    {geometry.length > 1 ? <Polyline positions={geometry} pathOptions={{ color: "#126a4d", weight: 6, opacity: 0.92, lineCap: "round", lineJoin: "round" }} /> : null}
+    {geometry.length > 1 ? <Polyline positions={geometry} pathOptions={{ color: "#087d59", weight: 5, opacity: 0.93, lineCap: "round", lineJoin: "round" }} /> : null}
     {start ? <Marker position={[start.lat, start.lng]} icon={pin("S", "start")} /> : null}
     {stops.map((p, i) => <Marker key={p.id} position={[p.lat, p.lng]} icon={pin(String(i + 1), "stop", p.status === "visited")} />)}
     {end ? <Marker position={[end.lat, end.lng]} icon={pin("F", "end")} /> : null}
