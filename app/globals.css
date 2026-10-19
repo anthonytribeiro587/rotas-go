@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+* { -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; min-height: 100%; }
+body { font-family: Arial, Helvetica, sans-serif; }
+input, button { font: inherit; }
+button { touch-action: manipulation; }
+::selection { background: #d9f36c; color: #142722; }
+button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid #9bcc33; outline-offset: 2px; }
+
+.app-shell { width: 100%; max-width: 1680px; margin: 0 auto; }
+.planner-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
+.map-panel { position: relative; height: 38dvh; min-height: 245px; overflow: hidden; background: #dbe8de; }
+.map-panel .leaflet-container { width: 100%; height: 100%; background: #e2ece4; }
+.sheet { position: relative; z-index: 2; background: white; border-radius: 26px 26px 0 0; margin-top: -24px; min-height: 62dvh; padding-bottom: 128px; box-shadow: 0 -10px 30px rgba(0,0,0,.04); }
+.leaflet-control-attribution { font-size: 9px !important; }
+.leaflet-div-icon { border: none !important; background: transparent !important; }
+.map-pin { width: 34px; height: 34px; border: 3px solid #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; color: #fff; border-radius: 13px; background: #126a4d; box-shadow: 0 5px 13px rgba(16,54,39,.28); }
+.map-pin.start { background: #192d27; border-radius: 50%; }
+.map-pin.end { background: #e19c41; border-radius: 50%; }
+.map-pin.visited { background: #7a9789; }
+.sortable-item { touch-action: pan-y; }
+.drag-handle { touch-action: none; cursor: grab; }
+.safe-bottom { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+.scroll-none { scrollbar-width: none; }
+.scroll-none::-webkit-scrollbar { display: none; }
+.search-popover { box-shadow: 0 18px 45px rgba(20,39,34,.17); }
+@media (min-width: 1024px) {
+  .planner-layout { height: calc(100dvh - 76px); grid-template-columns: minmax(430px, 46%) minmax(0, 54%); }
+  .map-panel { grid-column: 2; grid-row: 1; height: calc(100dvh - 76px); order: 2; }
+  .sheet { grid-column: 1; grid-row: 1; margin-top: 0; border-radius: 0; height: calc(100dvh - 76px); overflow: auto; box-shadow: none; border-right: 1px solid #e0e8df; padding-bottom: 140px; }
+}
