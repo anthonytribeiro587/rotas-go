@@ -39,7 +39,7 @@ function MapBounds({ points, geometry }: { points: Point[]; geometry: [number, n
   return null;
 }
 
-function pin(text: string, kind: "start" | "end" | "stop" | "draft", visited = false) {
+function pin(text: string, kind: "start" | "end" | "stop" | "skipped" | "draft", visited = false) {
   const cls = kind === "stop" ? (visited ? "visited" : "") : kind === "draft" ? "" : kind;
   return L.divIcon({
     className: "route-icon", iconSize: [35, 35], iconAnchor: [17, 17],
@@ -78,7 +78,7 @@ export default function RouteMap({ start, end, stops, geometry, focus, pickMode 
       {geometry.length > 1 ? <Polyline positions={geometry} pathOptions={{ color: "#087d59", weight: 5, opacity: 0.96, lineCap: "round", lineJoin: "round" }}/> : null}
       {start ? <Marker position={[start.lat, start.lng]} icon={pin("S", "start")}/> : null}
       {stops.map((point, index) =>
-        <Marker key={point.id} position={[point.lat, point.lng]} icon={pin(String(index + 1), "stop", point.status === "visited")}/>
+        <Marker key={point.id} position={[point.lat, point.lng]} icon={pin(point.status === "skipped" ? "×" : String(index + 1), point.status === "skipped" ? "skipped" : "stop", point.status === "visited")}/>
       )}
       {end ? <Marker position={[end.lat, end.lng]} icon={pin("F", "end")}/> : null}
       {draftPoint ? <Marker position={[draftPoint.lat, draftPoint.lng]} icon={pin("+", "draft")}/> : null}

@@ -48,3 +48,5 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 
 /* Só o mapa recebe wheel-zoom; o formulário lateral mantém sua própria rolagem. */
 .map-panel .leaflet-container { overscroll-behavior: contain; }
+
+.map-pin.skipped { background: #a28560; }

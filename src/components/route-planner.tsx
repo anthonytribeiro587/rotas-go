@@ -63,11 +63,11 @@ function StopRow({
       stop.status === "visited" ? "bg-[#e7f4dc] text-accent" :
       stop.status === "skipped" ? "bg-[#f4eee0] text-[#976a32]" :
       isNext ? "bg-accent text-white" : "bg-canvas text-ink"
-    )}>{stop.status === "visited" ? <Check size={19} strokeWidth={3} /> : index + 1}</span>
+    )}>{stop.status === "visited" ? <Check size={19} strokeWidth={3} /> : stop.status === "skipped" ? <CircleSlash size={17}/> : index + 1}</span>
     <div className="min-w-0 flex-1">
       <div className="flex items-center gap-1.5">
         <p className="truncate text-sm font-extrabold">{stop.name}</p>
-        {isNext ? <span className="shrink-0 rounded-full bg-[#e3f3d7] px-2 py-0.5 text-[9px] font-extrabold uppercase text-accent">Próximo</span> : null}
+        {isNext ? <span className="shrink-0 rounded-full bg-[#e3f3d7] px-2 py-0.5 text-[9px] font-extrabold uppercase text-accent">Próximo</span> : stop.status === "skipped" ? <span className="shrink-0 rounded-full bg-[#f4eee0] px-2 py-0.5 text-[9px] font-extrabold uppercase text-[#976a32]">Pulada</span> : null}
       </div>
       <p className="mt-0.5 truncate text-[11px] text-muted">{stop.address}</p>
       <div className="mt-2 flex flex-wrap gap-1.5">
@@ -258,7 +258,7 @@ export default function RoutePlanner() {
       const response = await fetch("/api/optimize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ start, end, stops: nextStops, mode: keepOrder ? "manual" : "optimize" }),
+        body: JSON.stringify({ start, end, stops: nextStops.filter(stop => stop.status !== "skipped"), mode: keepOrder ? "manual" : "optimize" }),
         signal: controller.signal
       });
       const result = await response.json();
@@ -268,7 +268,8 @@ export default function RoutePlanner() {
         order: result.order, geometry: result.geometry,
         distanceMeters: result.distanceMeters, durationSeconds: result.durationSeconds, exact: result.exact
       };
-      setStops(result.order.map((index: number) => nextStops[index]));
+      const activeStops = nextStops.filter(stop => stop.status !== "skipped");
+      setStops([...result.order.map((index: number) => activeStops[index]), ...nextStops.filter(stop => stop.status === "skipped")]);
       setOptimization(optimized);
       setManual(keepOrder);
       setNotice(keepOrder
@@ -299,7 +300,14 @@ export default function RoutePlanner() {
   }
 
   async function markStatus(id: string, status: VisitStatus) {
+    const hadSkipped = stops.find(s => s.id === id)?.status === "skipped";
     setStops((v) => v.map((s) => s.id === id ? { ...s, status } : s));
+    if (status === "skipped" || hadSkipped) {
+      clearComputed();
+      setNotice(status === "skipped"
+        ? "Visita pulada. Toque em Otimizar para recalcular sem este local."
+        : "Visita reaberta. Otimize para incluí-la novamente na rota.");
+    }
     if (supabase && user && savedRouteId) {
       const { error } = await supabase.from("route_stops")
         .update({ status, visited_at: status === "visited" ? new Date().toISOString() : null })
