@@ -83,7 +83,7 @@ export function ImportDestinations({ capacity, center, onAdd, onClose }: Props) 
       let matrix: RawCell[][];
       if (/\.xlsx$/i.test(file.name)) {
         const module = await import("read-excel-file/browser");
-        const rows = await module.default(file);
+        const rows = await module.readSheet(file);
         matrix = rows as RawCell[][];
       } else if (/\.(csv|txt)$/i.test(file.name)) {
         matrix = parseDelimited(await file.text());
