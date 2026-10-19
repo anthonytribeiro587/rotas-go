@@ -7,7 +7,7 @@ import {
   ArrowRight, Check, CheckCheck, ChevronLeft, CircleHelp, Plus,
   Compass, Footprints, GripVertical, History, LogIn,
   LogOut, MapPin, Navigation2, RotateCcw, Route, Save,
-  ShieldCheck, Sparkles, Trash2, X, CircleSlash, FileSpreadsheet
+  ShieldCheck, Sparkles, Trash2, X, CircleSlash, FileSpreadsheet, Link2
 } from "lucide-react";
 import {
   closestCenter, DndContext, KeyboardSensor, PointerSensor, TouchSensor,
@@ -21,6 +21,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
 import { LocationSearch } from "@/components/location-search";
 import { ImportDestinations } from "@/components/import-destinations";
+import { ImportMapsLinks } from "@/components/import-maps-links";
 import { supabase } from "@/lib/supabase";
 import { cn, duration, makeId, mapsLink, meters } from "@/lib/utils";
 import type { Optimization, Point, SavedPlan, SearchResult, Visit, VisitStatus } from "@/lib/types";
@@ -113,6 +114,7 @@ export default function RoutePlanner() {
   const [manualName, setManualName] = useState("");
   const [showGuide, setShowGuide] = useState(false);
   const [showImporter, setShowImporter] = useState(false);
+  const [showMapsImporter, setShowMapsImporter] = useState(false);
   const [confirmNew, setConfirmNew] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const pendingRequest = useRef<AbortController | null>(null);
@@ -511,8 +513,9 @@ export default function RoutePlanner() {
               </div> : null}
               <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <button type="button" onClick={() => setShowImporter(true)} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#e5f2e9] px-3 py-3 text-xs font-extrabold text-accent transition-colors hover:bg-[#d8ebdd]"><FileSpreadsheet size={16}/> Importar planilha Excel/CSV</button>
-                <button type="button" onClick={openMapPicker} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#b9cfc0] bg-white px-3 py-3 text-xs font-bold text-accent transition-colors hover:bg-[#eff7f0]"><MapPin size={15}/> Marcar local no mapa</button>
+                <button type="button" onClick={() => setShowMapsImporter(true)} className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#b9cfc0] bg-white px-3 py-3 text-xs font-bold text-accent transition-colors hover:bg-[#eff7f0]"><Link2 size={15}/> Colar links do Google Maps</button>
               </div>
+              <button type="button" onClick={openMapPicker} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-bold text-accent hover:bg-[#edf5ee]"><MapPin size={15}/> Não encontrou a loja? Marcar manualmente no mapa</button>
             </div>
 
             {stops.length ? <div className="mt-4 space-y-2">
@@ -553,6 +556,7 @@ export default function RoutePlanner() {
     </main>
 
     {showImporter ? <ImportDestinations capacity={Math.max(0,18-stops.length)} center={mapCenter} onAdd={addImportedStops} onClose={() => setShowImporter(false)}/> : null}
+    {showMapsImporter ? <ImportMapsLinks capacity={Math.max(0,18-stops.length)} center={mapCenter} onAdd={addImportedStops} onClose={() => setShowMapsImporter(false)}/> : null}
     {manualPoint ? <div className="fixed inset-x-3 bottom-[100px] z-[1450] mx-auto max-w-[420px] rounded-2xl border border-[#c9dfce] bg-white p-4 shadow-[0_18px_55px_rgba(8,48,28,.2)]">
       <div className="mb-3 flex items-start justify-between gap-2">
         <div><p className="text-[14px] font-extrabold text-ink">Local marcado no mapa</p><p className="mt-0.5 text-[11px] text-muted">Digite um nome para adicionar a visita.</p></div>
