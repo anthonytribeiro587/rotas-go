@@ -2,10 +2,24 @@
 
 import { useEffect, useMemo } from "react";
 import L from "leaflet";
-import { MapContainer, Marker, Polyline, TileLayer, useMap } from "react-leaflet";
+import { MapContainer, Marker, Polyline, TileLayer, ZoomControl, useMap, useMapEvents } from "react-leaflet";
 import type { Point, Visit } from "@/lib/types";
 
-type Props = { start: Point | null; end: Point | null; stops: Visit[]; geometry: [number, number][] };
+type Props = {
+  start: Point | null;
+  end: Point | null;
+  stops: Visit[];
+  geometry: [number, number][];
+  focus?: { lat: number; lng: number } | null;
+  pickMode?: boolean;
+  draftPoint?: { lat: number; lng: number } | null;
+  onPick?: (point: { lat: number; lng: number }) => void;
+};
+
+function MapPicker({ enabled, onPick }: { enabled: boolean; onPick?: Props["onPick"] }) {
+  useMapEvents({ click: (event) => { if (enabled) onPick?.({ lat: event.latlng.lat, lng: event.latlng.lng }); } });
+  return null;
+}
 
 function MapBounds({ points }: { points: Point[] }) {
   const map = useMap();
@@ -26,14 +40,20 @@ function pin(text: string, kind: "start" | "end" | "stop", visited = false) {
   return L.divIcon({ className: "route-icon", html: '<div class="map-pin ' + cls + '">' + text + "</div>", iconSize: [34, 34], iconAnchor: [17, 17] });
 }
 
-export default function RouteMap({ start, end, stops, geometry }: Props) {
-  const points = useMemo(() => [start, ...stops, end].filter((p): p is Point => Boolean(p)), [start, stops, end]);
-  return <MapContainer center={[-29.762, -51.148]} zoom={13} zoomControl={false} scrollWheelZoom={false} className="h-full w-full">
+export default function RouteMap({ start, end, stops, geometry, focus, pickMode = false, draftPoint, onPick }: Props) {
+  const points = useMemo(() => {
+    const trip = [start, ...stops, end].filter((p): p is Point => Boolean(p));
+    return trip.length ? trip : focus ? [{ ...focus, id: "focus", name: "Região da busca", address: "" }] : [];
+  }, [start, stops, end, focus]);
+  return <MapContainer center={[-29.762, -51.148]} zoom={13} zoomControl={false} scrollWheelZoom={false} className={"h-full w-full " + (pickMode ? "map-selecting" : "")}>
     <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" subdomains="abcd" maxZoom={19} attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>' />
     <MapBounds points={points} />
+    <MapPicker enabled={pickMode} onPick={onPick}/>
+    <ZoomControl position="bottomright" />
     {geometry.length > 1 ? <Polyline positions={geometry} pathOptions={{ color: "#087d59", weight: 5, opacity: 0.93, lineCap: "round", lineJoin: "round" }} /> : null}
     {start ? <Marker position={[start.lat, start.lng]} icon={pin("S", "start")} /> : null}
     {stops.map((p, i) => <Marker key={p.id} position={[p.lat, p.lng]} icon={pin(String(i + 1), "stop", p.status === "visited")} />)}
     {end ? <Marker position={[end.lat, end.lng]} icon={pin("F", "end")} /> : null}
+    {draftPoint ? <Marker position={[draftPoint.lat, draftPoint.lng]} icon={pin("+", "stop")} /> : null}
   </MapContainer>;
 }
