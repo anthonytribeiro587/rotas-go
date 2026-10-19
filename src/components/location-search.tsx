@@ -14,11 +14,12 @@ type Props = {
   allowGeolocation?: boolean;
   onGeolocation?: () => void;
   onClear?: () => void;
+  purpose?: "place" | "region";
 };
 
 const requestCache = new Map<string, SearchResult[]>();
 
-export function LocationSearch({ label, placeholder, onPick, current, center, allowGeolocation, onGeolocation, onClear }: Props) {
+export function LocationSearch({ label, placeholder, onPick, current, center, allowGeolocation, onGeolocation, onClear, purpose = "place" }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [busy, setBusy] = useState(false);
@@ -42,7 +43,7 @@ export function LocationSearch({ label, placeholder, onPick, current, center, al
     const id = ++sequence.current;
     const q = query.trim().replace(/\s+/g, " ");
     if (!open || q.length < 2) { setResults([]); setBusy(false); setError(""); return; }
-    const key = [q.toLocaleLowerCase("pt-BR"), center?.lat.toFixed(3) || "", center?.lng.toFixed(3) || ""].join("|");
+    const key = [purpose, q.toLocaleLowerCase("pt-BR"), center?.lat.toFixed(3) || "", center?.lng.toFixed(3) || ""].join("|");
     const cached = requestCache.get(key);
     if (cached) { setResults(cached); setBusy(false); setError(""); return; }
     const controller = new AbortController();
@@ -52,6 +53,7 @@ export function LocationSearch({ label, placeholder, onPick, current, center, al
     const timer = setTimeout(async () => {
       try {
         const params = new URLSearchParams({ q });
+        if (purpose === "region") params.set("mode", "city");
         if (center) { params.set("lat", String(center.lat)); params.set("lng", String(center.lng)); }
         const response = await fetch("/api/search?" + params, { signal: controller.signal });
         const data = await response.json();
@@ -71,7 +73,7 @@ export function LocationSearch({ label, placeholder, onPick, current, center, al
       }
     }, 240);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [query, open, center?.lat, center?.lng]);
+  }, [query, open, center?.lat, center?.lng, purpose]);
 
   const selectPlace = (place: SearchResult) => {
     onPick(place);
@@ -119,7 +121,7 @@ export function LocationSearch({ label, placeholder, onPick, current, center, al
     {showResults ? <div id={listId} role="listbox" aria-label={"Resultados para " + label} className="search-results mt-2 overflow-hidden rounded-xl border border-[#dfe8e0] bg-white">
       {busy && results.length === 0 ? <div className="flex items-center gap-2 px-4 py-4 text-[13px] text-muted"><LoaderCircle size={16} className="animate-spin" /> Procurando locais…</div> : null}
       {error ? <p role="alert" className="px-4 py-3 text-[13px] text-red-700">{error}</p> : null}
-      {!busy && !error && results.length === 0 ? <div className="px-4 py-3 text-[13px] leading-relaxed text-muted">Nenhum resultado. Tente incluir bairro e cidade, como “Lebes, Sapucaia do Sul”.</div> : null}
+      {!busy && !error && results.length === 0 ? <div className="px-4 py-3 text-[13px] leading-relaxed text-muted">{purpose === "region" ? "Cidade não encontrada. Digite somente o nome da cidade." : "Nenhum resultado. Tente incluir bairro e cidade ou marque diretamente no mapa."}</div> : null}
       {visible.map((place, i) => <button
         type="button" role="option" aria-selected={active === i}
         key={place.name + place.lat + "," + place.lng}
