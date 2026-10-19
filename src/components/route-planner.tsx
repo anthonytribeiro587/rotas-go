@@ -7,7 +7,7 @@ import {
   ArrowRight, Check, CheckCheck, ChevronLeft, CircleHelp, Plus,
   Compass, Footprints, GripVertical, History, LogIn,
   LogOut, MapPin, Navigation2, RotateCcw, Route, Save,
-  ShieldCheck, Sparkles, Trash2, X, CircleSlash
+  ShieldCheck, Sparkles, Trash2, X, CircleSlash, FileSpreadsheet
 } from "lucide-react";
 import {
   closestCenter, DndContext, KeyboardSensor, PointerSensor, TouchSensor,
@@ -20,6 +20,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
 import { LocationSearch } from "@/components/location-search";
+import { ImportDestinations } from "@/components/import-destinations";
 import { supabase } from "@/lib/supabase";
 import { cn, duration, makeId, mapsLink, meters } from "@/lib/utils";
 import type { Optimization, Point, SavedPlan, SearchResult, Visit, VisitStatus } from "@/lib/types";
@@ -111,6 +112,7 @@ export default function RoutePlanner() {
   const [manualPoint, setManualPoint] = useState<{ lat: number; lng: number } | null>(null);
   const [manualName, setManualName] = useState("");
   const [showGuide, setShowGuide] = useState(false);
+  const [showImporter, setShowImporter] = useState(false);
   const [confirmNew, setConfirmNew] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const pendingRequest = useRef<AbortController | null>(null);
@@ -206,6 +208,22 @@ export default function RoutePlanner() {
     setStops((v) => [...v, { ...item, id: makeId(), status: "pending" }]);
     clearComputed();
     setNotice("");
+  }
+  function addImportedStops(places: SearchResult[]) {
+    const existing = new Set(stops.map(s => s.lat.toFixed(6) + ":" + s.lng.toFixed(6)));
+    const unique = places.filter(point => {
+      const key = point.lat.toFixed(6) + ":" + point.lng.toFixed(6);
+      if (existing.has(key)) return false;
+      existing.add(key);
+      return true;
+    });
+    const accepted = unique.slice(0, Math.max(0, 18 - stops.length));
+    if (accepted.length) {
+      setStops(previous => [...previous, ...accepted.map(item => ({ ...item, id: makeId(), status: "pending" as const }))]);
+      clearComputed();
+      setNotice(accepted.length + " destinos importados. Confira a partida e chegada para calcular sua rota.");
+    }
+    return { added: accepted.length, duplicate: places.length - unique.length };
   }
   function addMapStop() {
     if (!manualPoint) return;
@@ -491,7 +509,10 @@ export default function RoutePlanner() {
                 <LocationSearch label="Priorizar buscas nesta cidade" placeholder="Ex.: Canoas, RS" purpose="region" center={searchRegion || start} current={searchRegion} onClear={() => setSearchRegion(null)} onPick={item => { setSearchRegion(item); setShowRegionSearch(false); setNotice("Busca priorizando a região de " + item.name + "."); }}/>
                 <p className="mt-2 text-[11px] leading-relaxed text-muted">Isso destaca lojas próximas da cidade escolhida, sem bloquear outras regiões.</p>
               </div> : null}
-              <button type="button" onClick={openMapPicker} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#b9cfc0] bg-white px-3 py-2.5 text-xs font-bold text-accent transition-colors hover:bg-[#eff7f0]"><MapPin size={15}/> Não encontrou o estabelecimento? Marcar no mapa</button>
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button type="button" onClick={() => setShowImporter(true)} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#e5f2e9] px-3 py-3 text-xs font-extrabold text-accent transition-colors hover:bg-[#d8ebdd]"><FileSpreadsheet size={16}/> Importar planilha Excel/CSV</button>
+                <button type="button" onClick={openMapPicker} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#b9cfc0] bg-white px-3 py-3 text-xs font-bold text-accent transition-colors hover:bg-[#eff7f0]"><MapPin size={15}/> Marcar local no mapa</button>
+              </div>
             </div>
 
             {stops.length ? <div className="mt-4 space-y-2">
@@ -531,6 +552,7 @@ export default function RoutePlanner() {
       </section>
     </main>
 
+    {showImporter ? <ImportDestinations capacity={Math.max(0,18-stops.length)} center={mapCenter} onAdd={addImportedStops} onClose={() => setShowImporter(false)}/> : null}
     {manualPoint ? <div className="fixed inset-x-3 bottom-[100px] z-[1450] mx-auto max-w-[420px] rounded-2xl border border-[#c9dfce] bg-white p-4 shadow-[0_18px_55px_rgba(8,48,28,.2)]">
       <div className="mb-3 flex items-start justify-between gap-2">
         <div><p className="text-[14px] font-extrabold text-ink">Local marcado no mapa</p><p className="mt-0.5 text-[11px] text-muted">Digite um nome para adicionar a visita.</p></div>
