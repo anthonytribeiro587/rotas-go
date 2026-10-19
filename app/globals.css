@@ -14,11 +14,11 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .app-shell { width: 100%; min-height: 100dvh; margin: 0 auto; background: #f6f8f6; }
 .planner-layout { display: grid; grid-template-columns: minmax(0, 1fr); }
 .map-panel { position: relative; height: 33dvh; min-height: 230px; overflow: hidden; background: #e7efea; }
-.map-panel .leaflet-container { width: 100%; height: 100%; background: #e8efeb; }
-.map-panel .leaflet-container.map-selecting { cursor: crosshair !important; }
+.map-panel .maplibregl-map { width: 100%; height: 100%; background: #e8efeb; }
+.map-panel .map-selecting, .map-panel .map-selecting .maplibregl-canvas { cursor: crosshair !important; }
+.map-panel .maplibregl-ctrl-attrib { font-size: 10px !important; background: rgba(255,255,255,.9) !important; }
+.map-panel .maplibregl-ctrl-bottom-right { right: 8px; bottom: 12px; }
 .sheet { position: relative; z-index: 2; background: #fff; border-radius: 24px 24px 0 0; margin-top: -19px; min-height: 68dvh; padding-bottom: 112px; box-shadow: 0 -12px 35px rgba(17,51,37,.06); }
-.leaflet-control-attribution { font-size: 10px !important; background: rgba(255,255,255,.84) !important; }
-.leaflet-div-icon { border: none !important; background: transparent !important; }
 .map-pin { width: 35px; height: 35px; border: 3px solid #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; color: #fff; border-radius: 12px; background: #087d59; box-shadow: 0 5px 14px rgba(10,64,43,.22); }
 .map-pin.start { background: #203a31; border-radius: 50%; }
 .map-pin.end { background: #e29c45; border-radius: 50%; }
@@ -37,7 +37,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
   .app-shell { height: 100dvh; overflow: hidden; }
   .planner-layout { height: calc(100dvh - 72px); grid-template-columns: minmax(460px, 575px) minmax(0, 1fr); }
   .map-panel { grid-column: 2; grid-row: 1; height: calc(100dvh - 72px); min-height: 0; order: 2; padding: 17px; background: #f1f5f1; }
-  .map-panel .leaflet-container { border-radius: 18px; box-shadow: 0 0 0 1px #e0e8e2; }
+  .map-panel .maplibregl-map { border-radius: 18px; box-shadow: 0 0 0 1px #e0e8e2; }
   .sheet { grid-column: 1; grid-row: 1; margin-top: 0; border-radius: 0; height: calc(100dvh - 72px); min-height: 0; overflow-y: auto; box-shadow: none; border-right: 1px solid #e9edea; padding-bottom: 128px; }
   .action-dock { right: auto; width: 575px; }
 }
