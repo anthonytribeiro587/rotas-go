@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { User } from "@supabase/supabase-js";
 import {
-  ArrowRight, Check, CheckCheck, ChevronLeft, CircleHelp, Plus, RotateCcw as RefreshCcw,
+  ArrowRight, Check, CheckCheck, ChevronLeft, CircleHelp, Plus,
   Compass, Footprints, GripVertical, History, LogIn,
   LogOut, MapPin, Navigation2, RotateCcw, Route, Save,
-  ShieldCheck, Sparkles, Trash2, X, CircleSlash, Pencil
+  ShieldCheck, Sparkles, Trash2, X, CircleSlash
 } from "lucide-react";
 import {
   closestCenter, DndContext, KeyboardSensor, PointerSensor, TouchSensor,
@@ -542,11 +542,11 @@ export default function RoutePlanner() {
         <Button variant="primary" size="lg" className="min-w-0 flex-1 rounded-xl shadow-sm" disabled={!canOptimize} onClick={() => void calculate()}>
           {isOptimizing ? <><RotateCcw className="animate-spin" size={18}/> Calculando melhor caminho…</> : <><Sparkles size={18}/> Otimizar minha rota <ArrowRight size={17}/></>}
         </Button>
-        <Button variant="outline" size="icon" className="h-14 w-14 shrink-0 rounded-xl" aria-label="Salvar rota" title="Salvar rota" disabled={!optimization || isSaving || Boolean(savedRouteId)} onClick={() => void savePlan()}>
-          {savedRouteId ? <CheckCheck size={21} className="text-accent"/> : <Save size={21}/>}
+        <Button variant="outline" size="lg" className="h-14 shrink-0 gap-1.5 rounded-xl px-3 text-[12px] font-extrabold sm:px-4" aria-label={savedRouteId ? "Rota salva" : "Salvar rota no histórico"} title="Salvar esta rota no histórico" disabled={!optimization || isSaving || Boolean(savedRouteId)} onClick={() => void savePlan()}>
+          {savedRouteId ? <><CheckCheck size={18} className="text-accent"/> Salva</> : <><Save size={18}/> Salvar</>}
         </Button>
       </div>
-      <p className="mt-1.5 text-center text-[11px] text-muted">{savedRouteId ? "Rota salva no Histórico. A próxima visita continua aqui." : optimization ? "Rota pronta! Clique no ícone de salvar para guardar no Histórico." : !stops.length ? "Primeiro, adicione um estabelecimento." : !start ? "Defina onde sua caminhada começa." : !end ? "Defina onde termina (ou escolha voltar à partida)." : "Pronto para encontrar a melhor ordem de visitas."}</p>
+      <p className="mt-1.5 text-center text-[11px] text-muted">{savedRouteId ? "Rota salva no Histórico. A próxima visita continua aqui." : optimization ? "Rota pronta! Clique em Salvar para guardar no Histórico." : !stops.length ? "Primeiro, adicione um estabelecimento." : !start ? "Defina onde sua caminhada começa." : !end ? "Defina onde termina (ou escolha voltar à partida)." : "Pronto para encontrar a melhor ordem de visitas."}</p>
     </div> : null}
     {notice ? <div role="status" className="fixed bottom-[112px] left-1/2 z-[1500] flex w-[min(460px,calc(100vw-24px))] -translate-x-1/2 items-center gap-3 rounded-xl bg-ink px-4 py-3 text-white shadow-float lg:bottom-6">
       <p className="flex-1 text-[12px] font-semibold leading-relaxed">{notice}</p><button type="button" onClick={() => setNotice("")} aria-label="Fechar aviso"><X size={17}/></button>
