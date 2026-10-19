@@ -17,7 +17,7 @@ const requestSchema = z.object({
   mode: z.enum(["optimize", "manual"]).optional()
 });
 const hits = new Map<string, { at: number; count: number }>();
-const BASE = "https://api.openrouteservice.org/v2";
+const BASE = "https://api.heigit.org/openrouteservice/v2";
 
 async function ors<T>(endpoint: string, body: object, key: string): Promise<T> {
   const response = await fetch(BASE + endpoint, {
