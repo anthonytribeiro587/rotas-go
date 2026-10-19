@@ -105,7 +105,6 @@ export default function RouteMap({ start, end, stops, geometry, focus, pickMode 
         zoom: 12.5,
         minZoom: 2,
         maxZoom: 19,
-        attributionControl: true,
         scrollZoom: false,
         dragRotate: false,
         pitchWithRotate: false,
