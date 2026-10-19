@@ -27,4 +27,4 @@ export type SavedPlan = {
   manual?: boolean;
 };
 
-export type SearchResult = Omit<Point, "id">;
+export type SearchResult = Omit<Point, "id"> & { city?: string; state?: string; distanceKm?: number };

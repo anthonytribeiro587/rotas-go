@@ -4,9 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import type { User } from "@supabase/supabase-js";
 import {
-  ArrowDownRight, ArrowRight, Check, CheckCheck, ChevronLeft, Clock3,
-  Compass, Footprints, GripVertical, History, LocateFixed, LogIn,
-  LogOut, MapPin, Navigation2, Plus, RotateCcw, Route, Save,
+  ArrowRight, Check, CheckCheck, ChevronLeft,
+  Compass, Footprints, GripVertical, History, LogIn,
+  LogOut, MapPin, Navigation2, RotateCcw, Route, Save,
   ShieldCheck, Sparkles, Trash2, X
 } from "lucide-react";
 import {
@@ -102,6 +102,11 @@ export default function RoutePlanner() {
   const [email, setEmail] = useState("");
   const [history, setHistory] = useState<SavedPlan[]>([]);
   const [historyBusy, setHistoryBusy] = useState(false);
+  const [searchRegion, setSearchRegion] = useState<SearchResult | null>(null);
+  const [showRegionSearch, setShowRegionSearch] = useState(false);
+  const [pickingMap, setPickingMap] = useState(false);
+  const [manualPoint, setManualPoint] = useState<{ lat: number; lng: number } | null>(null);
+  const [manualName, setManualName] = useState("");
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -115,6 +120,7 @@ export default function RoutePlanner() {
       if (draft) {
         const parsed = JSON.parse(draft);
         setStart(parsed.start ?? null);
+        setSearchRegion(parsed.searchRegion ?? null);
         setEnd(parsed.end ?? null);
         setStops(Array.isArray(parsed.stops) ? parsed.stops : []);
         setOptimization(parsed.optimization ?? null);
@@ -126,9 +132,9 @@ export default function RoutePlanner() {
   }, []);
   useEffect(() => {
     if (!ready) return;
-    try { localStorage.setItem(STORAGE_DRAFT, JSON.stringify({ start, end, stops, optimization, manual, savedRouteId })); }
+    try { localStorage.setItem(STORAGE_DRAFT, JSON.stringify({ start, end, stops, optimization, manual, savedRouteId, searchRegion })); }
     catch { /* navegador pode bloquear armazenamento privado */ }
-  }, [ready, start, end, stops, optimization, manual, savedRouteId]);
+  }, [ready, start, end, stops, optimization, manual, savedRouteId, searchRegion]);
   useEffect(() => {
     if (!supabase) return;
     supabase.auth.getUser().then(({ data }) => setUser(data.user)).catch(() => {});
@@ -138,9 +144,15 @@ export default function RoutePlanner() {
 
   const completed = stops.filter((s) => s.status === "visited").length;
   const next = stops.find((s) => s.status === "pending") || (optimization ? end : null);
-  const mapCenter = start || stops[0] || end || null;
+  const mapCenter = searchRegion || start || stops[0] || end || null;
   const canOptimize = Boolean(start && end && stops.length && !isOptimizing);
   const stopsIds = useMemo(() => stops.map((s) => s.id), [stops]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 6500);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   function clearComputed() {
     setOptimization(null);
@@ -164,6 +176,21 @@ export default function RoutePlanner() {
     clearComputed();
     setNotice("");
   }
+  function addMapStop() {
+    if (!manualPoint) return;
+    const name = manualName.trim();
+    if (!name) { setNotice("Dê um nome para o local marcado."); return; }
+    addStop({ name, address: "Ponto marcado no mapa · " + manualPoint.lat.toFixed(5) + ", " + manualPoint.lng.toFixed(5), ...manualPoint });
+    setManualPoint(null);
+    setManualName("");
+    setPickingMap(false);
+  }
+  function openMapPicker() {
+    setPickingMap(true);
+    setManualPoint(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   function removeStop(id: string) {
     setStops((v) => v.filter((s) => s.id !== id));
     clearComputed();
@@ -332,114 +359,138 @@ export default function RoutePlanner() {
     if (!error) setShowAccount(false);
   }
 
-  return <div className="app-shell min-h-dvh bg-canvas">
-    <header className="relative z-[1200] flex h-[76px] items-center justify-between border-b border-line bg-white px-5 sm:px-8">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-[14px] bg-accent text-white shadow-sm"><Route size={22} strokeWidth={2.5} /></div>
-        <div><div className="flex items-baseline gap-1"><span className="text-xl font-black tracking-[-.055em]">rotas</span><span className="text-xl font-black tracking-[-.055em] text-accent">GO</span><span className="ml-1 rounded-md bg-lime px-1.5 py-0.5 text-[9px] font-black tracking-wider">BETA</span></div><p className="text-[10px] font-semibold tracking-wide text-muted">CAMINHE MENOS. VENDA MAIS.</p></div>
+  return <div className="app-shell">
+    <header className="relative z-[1200] flex h-[72px] items-center justify-between border-b border-[#e8eee9] bg-white px-4 sm:px-7">
+      <div className="flex items-center gap-2.5">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-white shadow-[0_5px_15px_rgba(18,106,77,.13)]"><Route size={21} strokeWidth={2.5}/></div>
+        <div>
+          <div className="flex items-center gap-2 leading-none">
+            <span className="text-[21px] font-black tracking-[-.055em] text-ink">rotas<span className="text-accent">GO</span></span>
+            <span className="rounded-md bg-[#eff5eb] px-1.5 py-1 text-[9px] font-extrabold uppercase tracking-wide text-accent">Beta</span>
+          </div>
+          <p className="mt-1 text-[10px] font-medium text-muted">Planejamento inteligente de visitas</p>
+        </div>
       </div>
       <div className="flex items-center gap-2">
-        <button type="button" onClick={() => void openHistory()} className="flex h-11 w-11 items-center justify-center rounded-xl border border-line bg-white text-ink hover:bg-canvas" aria-label="Abrir histórico"><History size={20} /></button>
-        <button type="button" onClick={() => setShowAccount(!showAccount)} className="flex h-11 items-center gap-2 rounded-xl bg-ink px-3 text-xs font-bold text-white" aria-label="Conta do usuário">
-          {user ? <ShieldCheck size={17} /> : <LogIn size={17} />}<span className="hidden sm:inline">{user ? "Minha conta" : "Entrar"}</span>
+        <button type="button" onClick={() => void openHistory()} className="flex h-10 items-center gap-2 rounded-xl border border-[#e3eae4] bg-white px-3 text-xs font-bold text-[#486256] hover:bg-canvas" aria-label="Abrir histórico"><History size={17}/><span className="hidden sm:inline">Histórico</span></button>
+        <button type="button" onClick={() => setShowAccount(!showAccount)} className="flex h-10 items-center gap-2 rounded-xl bg-ink px-3.5 text-xs font-bold text-white hover:bg-[#25483c]" aria-label="Conta do usuário">
+          {user ? <ShieldCheck size={17}/> : <LogIn size={17}/>}<span className="hidden sm:inline">{user ? "Minha conta" : "Entrar"}</span>
         </button>
       </div>
-      {showAccount ? <div className="absolute right-4 top-[68px] z-[1200] w-[min(340px,calc(100vw-32px))] rounded-2xl border border-line bg-white p-4 shadow-float">
-        <div className="mb-3 flex items-center justify-between"><p className="font-extrabold">Minha conta</p><button type="button" aria-label="Fechar" onClick={() => setShowAccount(false)}><X size={18} /></button></div>
-        {user ? <><p className="mb-3 break-all text-xs text-muted">{user.email}</p><Button variant="outline" className="w-full" onClick={async () => { await supabase?.auth.signOut(); setShowAccount(false); }}><LogOut size={16} /> Sair</Button></> :
-          supabase ? <><p className="mb-3 text-xs leading-relaxed text-muted">Entre por link enviado por e-mail para salvar e sincronizar rotas.</p><input className="mb-3 h-12 w-full rounded-xl border border-line px-3 text-sm outline-none focus:border-accent" type="email" placeholder="seu@email.com" value={email} onChange={(e) => setEmail(e.target.value)} /><Button className="w-full" onClick={() => void sendMagicLink()}>Enviar link de acesso</Button></> :
+      {showAccount ? <div className="absolute right-4 top-[64px] z-[1200] w-[min(340px,calc(100vw-32px))] rounded-2xl border border-line bg-white p-4 shadow-float">
+        <div className="mb-3 flex items-center justify-between"><p className="font-extrabold">Minha conta</p><button type="button" aria-label="Fechar" onClick={() => setShowAccount(false)}><X size={18}/></button></div>
+        {user ? <><p className="mb-3 break-all text-xs text-muted">{user.email}</p><Button variant="outline" className="w-full" onClick={async () => { await supabase?.auth.signOut(); setShowAccount(false); }}><LogOut size={16}/> Sair</Button></> :
+          supabase ? <><p className="mb-3 text-xs leading-relaxed text-muted">Entre por link enviado por e-mail para salvar e sincronizar rotas.</p><input className="mb-3 h-12 w-full rounded-xl border border-line px-3 text-sm outline-none focus:border-accent" type="email" placeholder="seu@email.com" value={email} onChange={(e) => setEmail(e.target.value)}/><Button className="w-full" onClick={() => void sendMagicLink()}>Enviar link de acesso</Button></> :
             <p className="text-xs leading-relaxed text-muted">Modo local ativo. Configure Supabase para habilitar login e armazenamento em nuvem.</p>}
       </div> : null}
     </header>
 
     <main className="planner-layout">
       <section className="map-panel" aria-label="Mapa do percurso">
-        <RouteMap start={start} end={end} stops={stops} geometry={optimization?.geometry || []} />
-        <div className="pointer-events-none absolute left-4 top-5 z-[500] rounded-2xl border border-white/80 bg-white/95 px-3 py-2 shadow-sm">
-          <div className="flex items-center gap-2 text-[11px] font-extrabold"><span className="h-2 w-2 rounded-full bg-accent" /> MAPA DO PERCURSO</div>
-          <p className="mt-0.5 text-[10px] text-muted">{optimization ? "Rota pelas ruas" : "Adicione locais para começar"}</p>
+        <RouteMap start={start} end={end} stops={stops} geometry={optimization?.geometry || []} focus={searchRegion} pickMode={pickingMap} draftPoint={manualPoint} onPick={(point)=>{setManualPoint(point);setPickingMap(false);}}/>
+        <div className="pointer-events-none absolute left-4 top-4 z-[500] rounded-xl border border-white/90 bg-white/95 px-3 py-2 shadow-[0_4px_16px_rgba(19,48,33,.09)] lg:left-9 lg:top-9">
+          <div className="flex items-center gap-2 text-[11px] font-extrabold text-ink"><span className="h-2 w-2 rounded-full bg-accent"/> Mapa da rota</div>
+          <p className="mt-0.5 text-[10px] text-muted">{optimization ? "Percurso calculado pelas ruas" : stops.length ? stops.length + " locais adicionados" : "Seus locais aparecerão aqui"}</p>
         </div>
-        {optimization ? <div className="pointer-events-none absolute right-4 top-5 z-[500] flex items-center gap-2 rounded-2xl bg-ink px-3 py-2 text-xs font-bold text-white shadow-lg"><Footprints size={15} /> {meters(optimization.distanceMeters)}</div> : null}
-        <div className="pointer-events-none absolute bottom-9 left-4 z-[500] flex items-center gap-2 rounded-xl bg-white/95 px-2.5 py-1.5 text-[10px] font-bold text-muted"><span className="h-2 w-2 rounded-full bg-ink" /> Início <span className="ml-1 h-2 w-2 rounded-full bg-accent" /> Visitas <span className="ml-1 h-2 w-2 rounded-full bg-[#e19c41]" /> Fim</div>
+        {pickingMap ? <div className="pointer-events-none absolute inset-x-5 top-[78px] z-[600] mx-auto max-w-[360px] rounded-xl bg-ink px-4 py-3 text-center text-[12px] font-bold leading-relaxed text-white shadow-xl lg:top-24">Toque na posição exata do estabelecimento no mapa</div> : null}
+        {optimization ? <div className="pointer-events-none absolute right-4 top-4 z-[500] flex items-center gap-2 rounded-xl bg-ink px-3 py-2 text-xs font-bold text-white shadow-lg lg:right-9 lg:top-9"><Footprints size={15}/> {meters(optimization.distanceMeters)}</div> : null}
+        <div className="pointer-events-none absolute bottom-7 left-4 z-[500] flex items-center gap-3 rounded-xl bg-white/95 px-3 py-2 text-[10px] font-bold text-muted lg:bottom-10 lg:left-9"><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-ink"/> Origem</span><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-accent"/> Visitas</span><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#e19c41]"/> Fim</span></div>
       </section>
 
       <section className="sheet">
-        <div className="mx-auto max-w-[660px] px-5 pb-5 pt-6 sm:px-8 lg:pt-8">
+        <div className="mx-auto max-w-[660px] px-4 pb-6 pt-6 sm:px-7 lg:pt-7">
           {page === "history" ? <>
-            <button type="button" onClick={() => setPage("plan")} className="mb-5 flex items-center gap-1 text-sm font-bold text-accent"><ChevronLeft size={20} /> Voltar ao planejamento</button>
-            <div className="mb-6"><span className="text-[11px] font-extrabold uppercase tracking-[.17em] text-accent">Suas jornadas</span><h1 className="mt-1 text-[28px] font-black tracking-[-.055em]">Histórico de rotas</h1><p className="mt-1 text-sm text-muted">Retome um roteiro salvo para continuar suas visitas.</p></div>
+            <button type="button" onClick={() => setPage("plan")} className="mb-5 flex items-center gap-1 text-sm font-bold text-accent"><ChevronLeft size={20}/> Voltar ao planejamento</button>
+            <div className="mb-5"><h1 className="text-[26px] font-black tracking-[-.045em]">Histórico de rotas</h1><p className="mt-1 text-sm text-muted">Retome um roteiro salvo para continuar suas visitas.</p></div>
             {historyBusy ? <p className="py-8 text-center text-sm text-muted">Carregando rotas...</p> : history.length ? <div className="space-y-3">
               {history.map((plan) => <button type="button" key={plan.id} onClick={() => loadPlan(plan)} className="flex w-full items-center gap-3 rounded-2xl border border-line bg-white p-4 text-left hover:border-accent">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#e9f4e8] text-accent"><Route size={21} /></div>
-                <div className="min-w-0 flex-1"><p className="text-sm font-extrabold">{new Date(plan.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "long" })}</p><p className="mt-0.5 truncate text-xs text-muted">{plan.stops.length} visitas · {plan.optimization ? meters(plan.optimization.distanceMeters) : "Sem cálculo"}</p><p className="mt-1 truncate text-[11px] text-muted">{plan.start.name} → {plan.end.name}</p></div><ArrowRight className="shrink-0 text-accent" size={18} />
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#e9f4e8] text-accent"><Route size={21}/></div>
+                <div className="min-w-0 flex-1"><p className="text-sm font-extrabold">{new Date(plan.createdAt).toLocaleDateString("pt-BR",{day:"2-digit",month:"long"})}</p><p className="mt-0.5 truncate text-xs text-muted">{plan.stops.length} visitas · {plan.optimization ? meters(plan.optimization.distanceMeters) : "Sem cálculo"}</p><p className="mt-1 truncate text-[11px] text-muted">{plan.start.name} → {plan.end.name}</p></div><ArrowRight className="shrink-0 text-accent" size={18}/>
               </button>)}
-            </div> : <div className="rounded-2xl border border-dashed border-line bg-canvas px-5 py-10 text-center"><History className="mx-auto mb-3 text-muted" size={27} /><p className="font-bold">Nenhuma rota salva ainda</p><p className="mt-1 text-sm text-muted">Seu histórico aparecerá aqui.</p></div>}
+            </div> : <div className="rounded-2xl border border-dashed border-line bg-canvas px-5 py-10 text-center"><History className="mx-auto mb-3 text-muted" size={27}/><p className="font-bold">Nenhuma rota salva ainda</p><p className="mt-1 text-sm text-muted">Seu histórico aparecerá aqui.</p></div>}
           </> : <>
-            <div className="mb-5">
-              <div className="mb-2 flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-accent" /><span className="text-[11px] font-black uppercase tracking-[.15em] text-accent">Seu dia mais inteligente</span></div>
-              <h1 className="max-w-[540px] text-[27px] font-black leading-[1.15] tracking-[-.055em] sm:text-[31px]">Cada visita conta. <span className="text-accent">Cada passo também.</span></h1>
-              <p className="mt-2 text-[13px] leading-relaxed text-muted">Monte suas visitas e descubra o melhor caminho a pé.</p>
+            <div className="mb-6">
+              <p className="mb-1 text-[12px] font-bold text-accent">Planejamento do dia</p>
+              <h1 className="text-[27px] font-black leading-tight tracking-[-.05em] text-ink sm:text-[30px]">Sua rota, sem voltas.</h1>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-muted">Escolha os locais, defina partida e chegada e encontre o caminho a pé.</p>
             </div>
 
-            <div className="mb-5 grid grid-cols-2 gap-2">
-              <div className="rounded-2xl border border-line bg-[#f8faf7] px-3 py-3"><div className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wider text-muted"><MapPin size={13} /> Paradas</div><div className="mt-1 text-[23px] font-black leading-none">{stops.length}<span className="ml-1 text-xs font-semibold text-muted">locais</span></div></div>
-              <div className="rounded-2xl border border-line bg-[#f8faf7] px-3 py-3"><div className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wider text-muted"><Clock3 size={13} /> Caminhada</div><div className="mt-1 text-[23px] font-black leading-none">{optimization ? duration(optimization.durationSeconds) : "—"}</div></div>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#e8f4eb] text-xs font-black text-accent">1</span><h2 className="text-[16px] font-extrabold tracking-[-.025em]">Locais para visitar</h2></div>
+              <span className="rounded-full bg-[#eef5ef] px-2.5 py-1 text-[11px] font-bold text-accent">{stops.length} / 18 locais</span>
+            </div>
+            <div className="rounded-2xl border border-[#e0e9e0] bg-[#f8faf8] p-4">
+              <LocationSearch label="Nome do comércio, rua ou endereço" placeholder="Ex.: Lebes, Sapucaia do Sul" center={mapCenter} onPick={addStop}/>
+              <div className="mt-3 flex items-center justify-between gap-2 border-t border-[#e9efe9] pt-3">
+                <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted"><MapPin size={14} className="shrink-0 text-accent"/><span className="truncate">{searchRegion ? "Perto de " + searchRegion.name : start ? "Perto da partida" : "Busca em todo o Brasil"}</span></span>
+                <button type="button" onClick={() => setShowRegionSearch(!showRegionSearch)} className="shrink-0 text-[12px] font-bold text-accent hover:underline">{showRegionSearch ? "Fechar" : "Definir cidade"}</button>
+              </div>
+              {showRegionSearch ? <div className="mt-3 rounded-xl border border-[#e1e9e1] bg-white p-3">
+                <LocationSearch label="Priorizar buscas nesta cidade" placeholder="Ex.: Canoas, RS" purpose="region" center={searchRegion || start} current={searchRegion} onClear={() => setSearchRegion(null)} onPick={item => { setSearchRegion(item); setShowRegionSearch(false); setNotice("Busca priorizando a região de " + item.name + "."); }}/>
+                <p className="mt-2 text-[11px] leading-relaxed text-muted">Isso destaca lojas próximas da cidade escolhida, sem bloquear outras regiões.</p>
+              </div> : null}
+              <button type="button" onClick={openMapPicker} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#b9cfc0] bg-white px-3 py-2.5 text-xs font-bold text-accent transition-colors hover:bg-[#eff7f0]"><MapPin size={15}/> Não encontrou o estabelecimento? Marcar no mapa</button>
             </div>
 
-            <div className="rounded-[22px] border border-line bg-white p-3 shadow-sm sm:p-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <LocationSearch label="01 · Ponto de partida" placeholder="De onde você vai sair?" current={start} center={mapCenter} allowGeolocation onGeolocation={useMyLocation} onPick={(item) => setPoint("start", item)} />
-                <LocationSearch label="02 · Ponto final" placeholder="Onde você quer terminar?" current={end} center={mapCenter} onPick={(item) => setPoint("end", item)} />
+            {stops.length ? <div className="mt-4 space-y-2">
+              <div className="mb-1 flex items-center justify-between"><p className="text-[12px] font-bold text-[#597367]">Minhas visitas</p><span className="text-[11px] font-semibold text-accent">{completed}/{stops.length} concluídas</span></div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#eaf0e9]"><div className="h-full rounded-full bg-accent transition-all" style={{width:(completed / stops.length * 100)+"%"}}/></div>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+                <SortableContext items={stopsIds} strategy={verticalListSortingStrategy}>
+                  <div className="space-y-2.5 pt-1">{stops.map((stop,index)=><StopRow key={stop.id} stop={stop} index={index} isNext={next?.id === stop.id && stop.status==="pending"} onStatus={(id,status)=>void markStatus(id,status)} onRemove={removeStop}/>)}</div>
+                </SortableContext>
+              </DndContext>
+              <p className="flex items-center justify-center gap-1.5 pt-1 text-[11px] text-muted"><GripVertical size={12}/> Arraste para mudar a sequência.</p>
+            </div> : <div className="mt-3 rounded-xl border border-dashed border-[#dfe9e0] bg-white px-5 py-6 text-center">
+              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-[#eef5ed] text-accent"><MapPin size={19}/></div>
+              <p className="text-[13px] font-bold">Adicione seu primeiro local</p><p className="mt-1 text-xs text-muted">Seus estabelecimentos aparecerão aqui, organizados por visita.</p>
+            </div>}
+
+            <div className="mb-3 mt-7 flex items-center gap-2.5"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#e8f4eb] text-xs font-black text-accent">2</span><h2 className="text-[16px] font-extrabold tracking-[-.025em]">Partida e chegada</h2></div>
+            <div className="rounded-2xl border border-[#e0e9e0] bg-white p-4 shadow-[0_3px_15px_rgba(14,50,34,.03)]">
+              <div className="relative space-y-4 before:absolute before:bottom-[65px] before:left-[6px] before:top-[22px] before:w-px before:border-l before:border-dashed before:border-[#afc8b5]">
+                <div className="relative"><LocationSearch label="De onde você vai sair?" placeholder="Sua localização, endereço ou ponto de partida" current={start} center={mapCenter} allowGeolocation onGeolocation={useMyLocation} onPick={item=>setPoint("start",item)}/></div>
+                <div className="relative"><LocationSearch label="Onde quer terminar?" placeholder="Endereço de chegada" current={end} center={mapCenter} onPick={item=>setPoint("end",item)}/></div>
               </div>
             </div>
 
-            <div className="mt-6 mb-3 flex items-end justify-between">
-              <div><p className="text-[10px] font-extrabold uppercase tracking-[.16em] text-accent">Seu roteiro</p><h2 className="mt-0.5 text-xl font-black tracking-[-.04em]">Visitas de hoje <span className="ml-1 text-sm text-muted">({stops.length})</span></h2></div>
-              {stops.length ? <span className="rounded-full bg-[#eaf4e7] px-2.5 py-1 text-[11px] font-extrabold text-accent">{completed}/{stops.length} feitas</span> : null}
-            </div>
-            {stops.length ? <div className="mb-4 h-1.5 w-full overflow-hidden rounded-full bg-[#e9efe8]"><div className="h-full rounded-full bg-accent transition-all" style={{ width: (completed / stops.length * 100) + "%" }} /></div> : null}
-
-            <div className="mb-4 rounded-2xl border border-dashed border-[#b4d0b6] bg-[#f5faf3] p-3">
-              <LocationSearch label="Adicionar estabelecimento" placeholder="Nome da loja, rua ou endereço..." center={mapCenter} onPick={addStop} />
-              <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted"><Plus size={13} /> Busque, selecione e adicione até 18 locais.</div>
-            </div>
-
-            {optimization && next ? <div className="mb-4 flex items-center gap-3 rounded-2xl bg-ink p-3.5 text-white">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-lime text-ink"><Compass size={21} /></div>
-              <div className="min-w-0 flex-1"><p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-[#c8d8cd]">{completed === stops.length ? "Rota concluída · vá ao destino final" : "Sua próxima parada"}</p><p className="truncate text-sm font-extrabold">{next.name}</p></div>
-              <a className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-ink" href={mapsLink(next)} target="_blank" rel="noopener noreferrer" aria-label={"Navegar para " + next.name}><Navigation2 size={20} fill="currentColor" /></a>
+            {optimization && next ? <div className="mt-5 rounded-2xl border border-[#cfe5d6] bg-[#eaf6ee] p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent text-white"><Compass size={21}/></div>
+                <div className="min-w-0 flex-1"><p className="mb-0.5 text-[11px] font-bold text-accent">{completed === stops.length ? "Próximo: destino final" : "Próxima visita"}</p><p className="truncate text-[14px] font-extrabold">{next.name}</p></div>
+                <a className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-accent shadow-sm" href={mapsLink(next)} target="_blank" rel="noopener noreferrer" aria-label={"Navegar para "+next.name}><Navigation2 size={19}/></a>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 border-t border-[#d0e5d5] pt-3"><div><p className="text-[11px] text-muted">Distância a pé</p><p className="text-[18px] font-black">{meters(optimization.distanceMeters)}</p></div><div><p className="text-[11px] text-muted">Tempo estimado</p><p className="text-[18px] font-black">{duration(optimization.durationSeconds)}</p></div></div>
             </div> : null}
-
-            {stops.length ? <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-              <SortableContext items={stopsIds} strategy={verticalListSortingStrategy}>
-                <div className="space-y-2.5">{stops.map((stop, index) => <StopRow key={stop.id} stop={stop} index={index} isNext={next?.id === stop.id && stop.status === "pending"} onStatus={(id, status) => void markStatus(id, status)} onRemove={removeStop} />)}</div>
-              </SortableContext>
-            </DndContext> : <div className="rounded-2xl border border-dashed border-line bg-canvas px-6 py-9 text-center"><div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#e5f0e3] text-accent"><Footprints size={25} /></div><p className="font-extrabold">Sua rota começa aqui</p><p className="mx-auto mt-1 max-w-[270px] text-xs leading-relaxed text-muted">Adicione as lojas e estabelecimentos que deseja visitar hoje.</p></div>}
-
-            {optimization ? <div className="mt-4 rounded-2xl border border-line bg-canvas p-4">
-              <div className="grid grid-cols-3 gap-3 text-center"><div><p className="text-[10px] font-bold uppercase text-muted">Distância</p><p className="mt-1 text-base font-black">{meters(optimization.distanceMeters)}</p></div><div className="border-x border-line"><p className="text-[10px] font-bold uppercase text-muted">A pé</p><p className="mt-1 text-base font-black">{duration(optimization.durationSeconds)}</p></div><div><p className="text-[10px] font-bold uppercase text-muted">Método</p><p className="mt-1 text-[12px] font-black">{manual ? "Manual" : optimization.exact ? "TSP exato" : "Heurístico"}</p></div></div>
-              <p className="mt-3 text-center text-[10px] text-muted">Tempo estimado de caminhada, sem o atendimento nos clientes.</p>
-            </div> : null}
-            <p className="mt-4 flex items-center justify-center gap-1.5 text-center text-[11px] text-muted"><GripVertical size={12} /> Segure e arraste uma visita para alterar a ordem.</p>
           </>}
         </div>
       </section>
     </main>
 
-    {page === "plan" ? <div className="safe-bottom fixed inset-x-0 bottom-0 z-[1100] border-t border-line bg-white/95 px-5 pt-3 shadow-[0_-9px_35px_rgba(15,42,30,.09)] backdrop-blur-xl lg:right-auto lg:w-[46%] lg:max-w-[770px]">
-      <div className="mx-auto flex max-w-[630px] items-center gap-2">
-        <Button variant="primary" size="lg" className="min-w-0 flex-1 rounded-2xl shadow-sm" disabled={!canOptimize} onClick={() => void calculate()}>
-          {isOptimizing ? <><RotateCcw className="animate-spin" size={19} /> Calculando...</> : <><Sparkles size={19} /> Otimizar rota <ArrowDownRight size={19} /></>}
+    {manualPoint ? <div className="fixed inset-x-3 bottom-[100px] z-[1450] mx-auto max-w-[420px] rounded-2xl border border-[#c9dfce] bg-white p-4 shadow-[0_18px_55px_rgba(8,48,28,.2)]">
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <div><p className="text-[14px] font-extrabold text-ink">Local marcado no mapa</p><p className="mt-0.5 text-[11px] text-muted">Digite um nome para adicionar a visita.</p></div>
+        <button type="button" className="p-1 text-muted" aria-label="Cancelar ponto no mapa" onClick={()=>{setManualPoint(null);setManualName("");}}><X size={18}/></button>
+      </div>
+      <form onSubmit={event=>{event.preventDefault();addMapStop();}} className="flex items-center gap-2">
+        <input autoFocus maxLength={120} className="h-11 min-w-0 flex-1 rounded-xl border border-line bg-[#f8faf8] px-3 text-[13px] outline-none focus:border-accent" placeholder="Nome do comércio" value={manualName} onChange={event=>setManualName(event.target.value)}/>
+        <button type="submit" className="h-11 shrink-0 rounded-xl bg-accent px-4 text-xs font-bold text-white">Adicionar</button>
+      </form>
+      <button type="button" onClick={()=>{setManualPoint(null);openMapPicker();}} className="mt-2 text-[11px] font-bold text-accent">Escolher outro ponto</button>
+    </div> : null}
+    {page === "plan" ? <div className="action-dock safe-bottom fixed inset-x-0 bottom-0 z-[1100] border-t border-[#e5ece6] bg-white/95 px-4 pt-3 shadow-[0_-6px_30px_rgba(11,45,28,.07)] backdrop-blur-xl sm:px-6">
+      <div className="mx-auto flex max-w-[640px] items-center gap-2">
+        <Button variant="primary" size="lg" className="min-w-0 flex-1 rounded-xl shadow-sm" disabled={!canOptimize} onClick={() => void calculate()}>
+          {isOptimizing ? <><RotateCcw className="animate-spin" size={18}/> Calculando melhor caminho…</> : <><Sparkles size={18}/> Otimizar minha rota <ArrowRight size={17}/></>}
         </Button>
-        <Button variant="outline" size="icon" className="h-14 w-14 shrink-0 rounded-2xl" aria-label="Salvar rota" title="Salvar rota" disabled={!optimization || isSaving || Boolean(savedRouteId)} onClick={() => void savePlan()}>
-          {savedRouteId ? <CheckCheck size={21} className="text-accent" /> : <Save size={21} />}
+        <Button variant="outline" size="icon" className="h-14 w-14 shrink-0 rounded-xl" aria-label="Salvar rota" title="Salvar rota" disabled={!optimization || isSaving || Boolean(savedRouteId)} onClick={() => void savePlan()}>
+          {savedRouteId ? <CheckCheck size={21} className="text-accent"/> : <Save size={21}/>}
         </Button>
       </div>
-      <p className="mt-1.5 text-center text-[10px] text-muted">{savedRouteId ? "Rota salva" : optimization ? "Pronta para começar: salve e abra o GPS em cada visita." : "Ponto de partida e chegada permanecem fixos."}</p>
+      <p className="mt-1.5 text-center text-[11px] text-muted">{savedRouteId ? "Rota salva" : optimization ? "Rota pronta. Navegue até cada visita pelo GPS." : !start || !end ? "Adicione as visitas e defina partida e chegada." : "Encontre a menor sequência a pé."}</p>
     </div> : null}
-
-    {notice ? <div role="status" className="fixed bottom-[114px] left-1/2 z-[1500] flex w-[min(480px,calc(100vw-32px))] -translate-x-1/2 items-start gap-3 rounded-2xl bg-ink px-4 py-3 text-white shadow-float lg:bottom-7">
-      <p className="flex-1 text-xs font-semibold leading-relaxed">{notice}</p><button type="button" onClick={() => setNotice("")} aria-label="Fechar aviso"><X size={18} /></button>
+    {notice ? <div role="status" className="fixed bottom-[112px] left-1/2 z-[1500] flex w-[min(460px,calc(100vw-24px))] -translate-x-1/2 items-center gap-3 rounded-xl bg-ink px-4 py-3 text-white shadow-float lg:bottom-6">
+      <p className="flex-1 text-[12px] font-semibold leading-relaxed">{notice}</p><button type="button" onClick={() => setNotice("")} aria-label="Fechar aviso"><X size={17}/></button>
     </div> : null}
   </div>;
 }
