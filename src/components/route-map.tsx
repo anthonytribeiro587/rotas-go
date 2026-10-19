@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import maplibregl from "maplibre-gl";
+import { useEffect, useMemo, useState } from "react";
+import L from "leaflet";
+import { MapContainer, Marker, Polyline, TileLayer, ZoomControl, useMap, useMapEvents } from "react-leaflet";
 import type { Point, Visit } from "@/lib/types";
-
-const STYLE_URL = "https://tiles.openfreemap.org/styles/bright";
-const INITIAL_CENTER: [number, number] = [-51.148, -29.762];
 
 type Props = {
   start: Point | null;
@@ -18,151 +16,77 @@ type Props = {
   onPick?: (point: { lat: number; lng: number }) => void;
 };
 
-function routeGeoJSON(geometry: Props["geometry"]) {
-  return {
-    type: "FeatureCollection" as const,
-    features: geometry.length > 1 ? [{
-      type: "Feature" as const,
-      properties: {},
-      geometry: {
-        type: "LineString" as const,
-        coordinates: geometry.map(([lat, lng]) => [lng, lat])
-      }
-    }] : []
-  };
+function MapPicker({ enabled, onPick }: { enabled: boolean; onPick?: Props["onPick"] }) {
+  useMapEvents({ click: event => { if (enabled) onPick?.({ lat: event.latlng.lat, lng: event.latlng.lng }); } });
+  return null;
 }
 
-function addPoint(map: maplibregl.Map, point: { lat: number; lng: number }, text: string, kind: string) {
-  const element = document.createElement("div");
-  element.className = "map-pin " + kind;
-  element.textContent = text;
-  element.setAttribute("aria-label", text === "S" ? "Ponto de partida" : text === "F" ? "Ponto final" : "Visita " + text);
-  element.setAttribute("role", "img");
-  return new maplibregl.Marker({ element, anchor: "center" })
-    .setLngLat([point.lng, point.lat])
-    .addTo(map);
+function MapBounds({ points, geometry }: { points: Point[]; geometry: [number, number][] }) {
+  const map = useMap();
+  const signature = points.map(p => p.id + ":" + p.lat + "," + p.lng).join("|") +
+    "::" + geometry.length + "::" + (geometry.length ? geometry[0].join(",") + geometry[geometry.length - 1].join(",") : "");
+  useEffect(() => {
+    const handle = window.setTimeout(() => map.invalidateSize(), 40);
+    if (points.length === 1) map.setView([points[0].lat, points[0].lng], 15, { animate: true });
+    else if (points.length > 1) {
+      const bounds = L.latLngBounds(points.map(p => [p.lat, p.lng]));
+      geometry.forEach(p => bounds.extend(p));
+      map.fitBounds(bounds.pad(0.16), { maxZoom: 16, animate: true });
+    }
+    return () => window.clearTimeout(handle);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, signature]);
+  return null;
 }
 
-function synchronizeMap(map: maplibregl.Map, props: Props, markers: maplibregl.Marker[]) {
-  const { start, end, stops, geometry, focus, draftPoint } = props;
-  if (!map.getSource("walking-route")) {
-    if (!map.isStyleLoaded()) return;
-    map.addSource("walking-route", { type: "geojson", data: routeGeoJSON(geometry) });
-    map.addLayer({
-      id: "walking-route-outline",
-      type: "line",
-      source: "walking-route",
-      paint: { "line-color": "#ffffff", "line-width": 9, "line-opacity": 0.9 }
-    });
-    map.addLayer({
-      id: "walking-route-line",
-      type: "line",
-      source: "walking-route",
-      paint: { "line-color": "#087d59", "line-width": 5.5, "line-opacity": 0.96 }
-    });
-  } else {
-    (map.getSource("walking-route") as maplibregl.GeoJSONSource).setData(routeGeoJSON(geometry));
-  }
-
-  markers.forEach(marker => marker.remove());
-  markers.length = 0;
-  if (start) markers.push(addPoint(map, start, "S", "start"));
-  stops.forEach((stop, index) => markers.push(addPoint(map, stop, String(index + 1), stop.status === "visited" ? "visited" : "stop")));
-  if (end) markers.push(addPoint(map, end, "F", "end"));
-  if (draftPoint) markers.push(addPoint(map, draftPoint, "+", "draft"));
-
-  const locations = [start, ...stops, end].filter((p): p is Point => Boolean(p));
-  if (!locations.length && focus) locations.push({ ...focus, id: "region", name: "Região", address: "" });
-  if (locations.length === 1) {
-    map.easeTo({ center: [locations[0].lng, locations[0].lat], zoom: 15, duration: 450 });
-  } else if (locations.length > 1) {
-    const bounds = new maplibregl.LngLatBounds();
-    locations.forEach(place => bounds.extend([place.lng, place.lat]));
-    map.fitBounds(bounds, { padding: 68, maxZoom: 16, duration: 450 });
-  }
+function pin(text: string, kind: "start" | "end" | "stop" | "draft", visited = false) {
+  const cls = kind === "stop" ? (visited ? "visited" : "") : kind === "draft" ? "" : kind;
+  return L.divIcon({
+    className: "route-icon", iconSize: [35, 35], iconAnchor: [17, 17],
+    // text always originates from a constant or numeric index, never a user string.
+    html: '<div class="map-pin ' + cls + '">' + text + "</div>"
+  });
 }
 
 export default function RouteMap({ start, end, stops, geometry, focus, pickMode = false, draftPoint, onPick }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<maplibregl.Map | null>(null);
-  const markersRef = useRef<maplibregl.Marker[]>([]);
-  const propsRef = useRef<Props>({ start, end, stops, geometry, focus, pickMode, draftPoint, onPick });
-  const [problem, setProblem] = useState("");
-  const [revision, setRevision] = useState(0);
-  propsRef.current = { start, end, stops, geometry, focus, pickMode, draftPoint, onPick };
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    let map: maplibregl.Map;
-    let failureCount = 0;
-    setProblem("");
-    try {
-      map = new maplibregl.Map({
-        container,
-        style: STYLE_URL,
-        center: INITIAL_CENTER,
-        zoom: 12.5,
-        minZoom: 2,
-        maxZoom: 19,
-        scrollZoom: false,
-        dragRotate: false,
-        pitchWithRotate: false,
-        maxPitch: 0
-      });
-    } catch {
-      setProblem("Não foi possível iniciar o mapa neste navegador.");
-      return;
-    }
-
-    mapRef.current = map;
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
-    map.on("load", () => {
-      setProblem("");
-      synchronizeMap(map, propsRef.current, markersRef.current);
-    });
-    map.on("click", event => {
-      if (propsRef.current.pickMode) {
-        propsRef.current.onPick?.({ lat: event.lngLat.lat, lng: event.lngLat.lng });
-      }
-    });
-    map.on("error", () => {
-      failureCount += 1;
-      if (failureCount >= 7) setProblem("Não foi possível carregar as ruas do mapa.");
-    });
-
-    const timeout = window.setTimeout(() => {
-      if (!map.isStyleLoaded()) setProblem("O mapa demorou a carregar.");
-    }, 15000);
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => map.resize());
-    observer?.observe(container);
-
-    return () => {
-      observer?.disconnect();
-      window.clearTimeout(timeout);
-      markersRef.current.forEach(marker => marker.remove());
-      markersRef.current = [];
-      map.remove();
-      mapRef.current = null;
-    };
-  }, [revision]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (map && (map.isStyleLoaded() || map.getSource("walking-route"))) {
-      synchronizeMap(map, propsRef.current, markersRef.current);
-    }
-  }, [start, end, stops, geometry, focus, draftPoint]);
+  const [tileErrors, setTileErrors] = useState(0);
+  const [tileRevision, setTileRevision] = useState(0);
+  const points = useMemo(() => {
+    const trip = [start, ...stops, end].filter((p): p is Point => Boolean(p));
+    return trip.length ? trip : focus ? [{ ...focus, id: "region", name: "Região", address: "" }] : [];
+  }, [start, stops, end, focus]);
 
   return <div className="relative h-full w-full">
-    <div ref={containerRef} className={"h-full w-full " + (pickMode ? "map-selecting" : "")} aria-label="Mapa interativo OpenFreeMap" />
-    {problem ? <div role="alert" className="absolute inset-x-4 top-1/2 z-[700] mx-auto max-w-[330px] -translate-y-1/2 rounded-2xl border border-[#dde9df] bg-white/95 p-4 text-center shadow-xl">
-      <p className="text-sm font-extrabold text-ink">Mapa temporariamente indisponível</p>
-      <p className="mt-1 text-xs leading-relaxed text-muted">{problem} Suas visitas continuam disponíveis na lista.</p>
-      <div className="mt-3 flex justify-center gap-2">
-        <button type="button" onClick={() => setRevision(n => n + 1)} className="rounded-xl bg-accent px-3 py-2 text-xs font-bold text-white">Tentar novamente</button>
-        <a target="_blank" rel="noopener noreferrer" className="rounded-xl border border-line px-3 py-2 text-xs font-bold text-accent" href="https://www.openstreetmap.org/">Abrir mapa</a>
-      </div>
+    <MapContainer
+      center={[-29.762, -51.148]}
+      zoom={13} zoomControl={false} scrollWheelZoom={false}
+      className={"h-full w-full " + (pickMode ? "map-selecting" : "")}
+    >
+      {/* Tiles are fetched via a same-origin caching endpoint. No browser request to an external map server. */}
+      <TileLayer key={tileRevision} url="/api/map-tiles/{z}/{x}/{y}.png"
+        maxNativeZoom={18} maxZoom={19} keepBuffer={2}
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        eventHandlers={{
+          tileerror: () => setTileErrors(n => n + 1),
+          tileload: () => setTileErrors(0)
+        }}
+      />
+      <MapBounds points={points} geometry={geometry}/>
+      <MapPicker enabled={pickMode} onPick={onPick}/>
+      <ZoomControl position="bottomright"/>
+      {geometry.length > 1 ? <Polyline positions={geometry} pathOptions={{ color: "#ffffff", weight: 9, opacity: 0.85 }}/> : null}
+      {geometry.length > 1 ? <Polyline positions={geometry} pathOptions={{ color: "#087d59", weight: 5, opacity: 0.96, lineCap: "round", lineJoin: "round" }}/> : null}
+      {start ? <Marker position={[start.lat, start.lng]} icon={pin("S", "start")}/> : null}
+      {stops.map((point, index) =>
+        <Marker key={point.id} position={[point.lat, point.lng]} icon={pin(String(index + 1), "stop", point.status === "visited")}/>
+      )}
+      {end ? <Marker position={[end.lat, end.lng]} icon={pin("F", "end")}/> : null}
+      {draftPoint ? <Marker position={[draftPoint.lat, draftPoint.lng]} icon={pin("+", "draft")}/> : null}
+    </MapContainer>
+    {tileErrors >= 4 ? <div role="alert" className="absolute left-1/2 top-1/2 z-[700] w-[min(320px,calc(100%-32px))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-line bg-white p-4 text-center shadow-xl">
+      <p className="text-sm font-bold text-ink">Não foi possível receber o mapa de ruas</p>
+      <p className="mt-1 text-xs text-muted">O percurso e as visitas permanecem salvos. Verifique a conexão e tente novamente.</p>
+      <button type="button" onClick={() => { setTileErrors(0); setTileRevision(n => n + 1); }} className="mt-3 rounded-xl bg-accent px-4 py-2 text-xs font-bold text-white">Recarregar ruas</button>
     </div> : null}
   </div>;
 }
