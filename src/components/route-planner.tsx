@@ -426,8 +426,8 @@ export default function RoutePlanner() {
                 <button type="button" onClick={() => setShowRegionSearch(!showRegionSearch)} className="shrink-0 text-[12px] font-bold text-accent hover:underline">{showRegionSearch ? "Fechar" : "Definir cidade"}</button>
               </div>
               {showRegionSearch ? <div className="mt-3 rounded-xl border border-[#e1e9e1] bg-white p-3">
-                <LocationSearch label="Priorizar buscas nesta cidade ou bairro" placeholder="Ex.: Canoas, RS" center={searchRegion || start} current={searchRegion} onClear={() => setSearchRegion(null)} onPick={item => { setSearchRegion(item); setShowRegionSearch(false); setNotice("Busca priorizando a região de " + item.name + "."); }}/>
-                <p className="mt-2 text-[11px] leading-relaxed text-muted">Isso melhora a ordem das sugestões, sem impedir buscas em outras cidades.</p>
+                <LocationSearch label="Priorizar buscas nesta cidade" placeholder="Ex.: Canoas, RS" purpose="region" center={searchRegion || start} current={searchRegion} onClear={() => setSearchRegion(null)} onPick={item => { setSearchRegion(item); setShowRegionSearch(false); setNotice("Busca priorizando a região de " + item.name + "."); }}/>
+                <p className="mt-2 text-[11px] leading-relaxed text-muted">Isso destaca lojas próximas da cidade escolhida, sem bloquear outras regiões.</p>
               </div> : null}
               <button type="button" onClick={openMapPicker} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#b9cfc0] bg-white px-3 py-2.5 text-xs font-bold text-accent transition-colors hover:bg-[#eff7f0]"><MapPin size={15}/> Não encontrou o estabelecimento? Marcar no mapa</button>
             </div>
