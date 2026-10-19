@@ -57,12 +57,13 @@ function relevance(place: SearchResult, query: string, center: { lat: number; ln
   return score;
 }
 
-async function searchPhoton(q: string, center: { lat: number; lng: number } | null): Promise<SearchResult[]> {
+async function searchPhoton(q: string, center: { lat: number; lng: number } | null, cityOnly: boolean): Promise<SearchResult[]> {
   const base = process.env.PHOTON_BASE_URL || "https://photon.komoot.io";
   const url = new URL("/api/", base);
   url.searchParams.set("q", q);
   url.searchParams.set("limit", "15");
   url.searchParams.set("countrycode", "BR");
+  if (cityOnly) url.searchParams.set("layer", "city");
   if (center) {
     url.searchParams.set("lat", String(center.lat));
     url.searchParams.set("lon", String(center.lng));
@@ -86,7 +87,9 @@ async function searchPhoton(q: string, center: { lat: number; lng: number } | nu
 }
 
 export async function GET(request: NextRequest) {
-  const q = (request.nextUrl.searchParams.get("q") || "").trim().replace(/\s+/g, " ").slice(0, 120);
+  const cityOnly = request.nextUrl.searchParams.get("mode") === "city";
+  const rawQ = (request.nextUrl.searchParams.get("q") || "").trim().replace(/\s+/g, " ").slice(0, 120);
+  const q = cityOnly ? rawQ.replace(/[,\s]+(?:RS|SC|PR|SP|RJ|MG|ES|BA|DF|GO|MT|MS|PA|AM|AC|AP|AL|CE|MA|PB|PE|PI|RN|RO|RR|SE|TO)$/i, "").trim() : rawQ;
   if (q.length < 2) return NextResponse.json({ results: [] });
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
   const now = Date.now();
@@ -100,12 +103,12 @@ export async function GET(request: NextRequest) {
   const latStr = request.nextUrl.searchParams.get("lat"), lngStr = request.nextUrl.searchParams.get("lng");
   const lat = Number(latStr), lng = Number(lngStr);
   const center = latStr !== null && lngStr !== null && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng } : null;
-  const key = [norm(q), center?.lat.toFixed(3) || "", center?.lng.toFixed(3) || ""].join("|");
+  const key = [cityOnly ? "city" : "all", norm(q), center?.lat.toFixed(3) || "", center?.lng.toFixed(3) || ""].join("|");
   const prior = cache.get(key);
   if (prior && now - prior.at < TTL) return NextResponse.json({ results: prior.data }, { headers: { "Cache-Control": "public, max-age=20, stale-while-revalidate=120" } });
   try {
     let pending = inflight.get(key);
-    if (!pending) { pending = searchPhoton(q, center); inflight.set(key, pending); }
+    if (!pending) { pending = searchPhoton(q, center, cityOnly); inflight.set(key, pending); }
     const results = await pending;
     if (cache.size > 250) cache.clear();
     cache.set(key, { at: now, data: results });
