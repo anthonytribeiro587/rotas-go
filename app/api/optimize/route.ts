@@ -22,7 +22,11 @@ const BASE = "https://api.heigit.org/openrouteservice/v2";
 async function ors<T>(endpoint: string, body: object, key: string): Promise<T> {
   const response = await fetch(BASE + endpoint, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: key, Accept: "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: key,
+      Accept: endpoint.endsWith("/geojson") ? "application/geo+json" : "application/json"
+    },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(20000),
     cache: "no-store"
