@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Check, ChevronDown, LoaderCircle, LocateFixed, MapPin, Search, X } from "lucide-react";
 import type { SearchResult } from "@/lib/types";
+import { selectCandidate } from "@/lib/place-candidates";
 
 type Center = { lat: number; lng: number };
 type Props = {
@@ -27,6 +28,9 @@ export function LocationSearch({ label, placeholder, onPick, current, center, al
   const [open, setOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [active, setActive] = useState(0);
+  const [choosing, setChoosing] = useState(false);
+  const tokenRef = useRef<string>("");
+  const usingGoogle = process.env.NEXT_PUBLIC_MAP_PROVIDER === "google";
   const rootRef = useRef<HTMLDivElement>(null);
   const sequence = useRef(0);
   const listId = useId();
@@ -42,9 +46,9 @@ export function LocationSearch({ label, placeholder, onPick, current, center, al
   useEffect(() => {
     const id = ++sequence.current;
     const q = query.trim().replace(/\s+/g, " ");
-    if (!open || q.length < 2) { setResults([]); setBusy(false); setError(""); return; }
+    if (!open || q.length < (usingGoogle ? 3 : 2)) { setResults([]); setBusy(false); setError(""); return; }
     const key = [purpose, q.toLocaleLowerCase("pt-BR"), center?.lat.toFixed(3) || "", center?.lng.toFixed(3) || ""].join("|");
-    const cached = requestCache.get(key);
+    const cached = usingGoogle ? undefined : requestCache.get(key);
     if (cached) { setResults(cached); setBusy(false); setError(""); return; }
     const controller = new AbortController();
     setBusy(true);
@@ -54,14 +58,20 @@ export function LocationSearch({ label, placeholder, onPick, current, center, al
       try {
         const params = new URLSearchParams({ q });
         if (purpose === "region") params.set("mode", "city");
+        if (usingGoogle) {
+          if (!tokenRef.current) tokenRef.current = crypto.randomUUID();
+          params.set("sessionToken", tokenRef.current);
+        }
         if (center) { params.set("lat", String(center.lat)); params.set("lng", String(center.lng)); }
         const response = await fetch("/api/search?" + params, { signal: controller.signal });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Busca indisponível");
         if (id !== sequence.current) return;
         const places: SearchResult[] = Array.isArray(data.results) ? data.results : [];
-        if (requestCache.size > 180) requestCache.clear();
-        requestCache.set(key, places);
+        if (!usingGoogle) {
+          if (requestCache.size > 180) requestCache.clear();
+          requestCache.set(key, places);
+        }
         setResults(places);
         setActive(0);
       } catch (e) {
@@ -71,19 +81,27 @@ export function LocationSearch({ label, placeholder, onPick, current, center, al
       } finally {
         if (!controller.signal.aborted && id === sequence.current) setBusy(false);
       }
-    }, 240);
+    }, usingGoogle ? 350 : 240);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [query, open, center?.lat, center?.lng, purpose]);
+  }, [query, open, center?.lat, center?.lng, purpose, usingGoogle]);
 
-  const selectPlace = (place: SearchResult) => {
-    onPick(place);
-    setQuery("");
-    setResults([]);
-    setOpen(false);
-    setShowAll(false);
+  const selectPlace = async (place: SearchResult) => {
+    if (choosing) return;
+    setChoosing(true); setError("");
+    try {
+      const resolved = await selectCandidate(place, tokenRef.current);
+      onPick(resolved);
+      tokenRef.current = "";
+      setQuery("");
+      setResults([]);
+      setOpen(false);
+      setShowAll(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Não foi possível confirmar o local.");
+    } finally { setChoosing(false); }
   };
   const visible = showAll ? results : results.slice(0, 5);
-  const showResults = open && query.trim().length >= 2;
+  const showResults = open && query.trim().length >= (usingGoogle ? 3 : 2);
   return <div ref={rootRef} className="location-search min-w-0">
     <div className="mb-2 flex items-center justify-between gap-2">
       <label htmlFor={listId + "-input"} className="text-[12px] font-bold text-[#31463d]">{label}</label>
@@ -100,19 +118,19 @@ export function LocationSearch({ label, placeholder, onPick, current, center, al
         className="h-[48px] min-w-0 flex-1 bg-transparent text-[14px] font-medium text-ink outline-none placeholder:font-normal placeholder:text-[#93a198]"
         placeholder={placeholder}
         value={query}
-        onFocus={() => setOpen(true)}
+        onFocus={() => { setOpen(true); if (usingGoogle && !tokenRef.current) tokenRef.current = crypto.randomUUID(); }}
         onChange={(event) => { setQuery(event.target.value); setOpen(true); setShowAll(false); }}
         onKeyDown={(event) => {
           if (event.key === "Escape") { setOpen(false); return; }
           if (!showResults || results.length === 0) return;
           if (event.key === "ArrowDown") { event.preventDefault(); setActive((v) => Math.min(v + 1, results.length - 1)); setShowAll(true); }
           if (event.key === "ArrowUp") { event.preventDefault(); setActive((v) => Math.max(v - 1, 0)); }
-          if (event.key === "Enter") { event.preventDefault(); selectPlace(results[active] || results[0]); }
+          if (event.key === "Enter") { event.preventDefault(); void selectPlace(results[active] || results[0]); }
         }}
         autoComplete="off"
         spellCheck={false}
       />
-      {busy ? <LoaderCircle size={17} className="shrink-0 animate-spin text-accent" aria-label="Buscando locais" /> : null}
+      {busy || choosing ? <LoaderCircle size={17} className="shrink-0 animate-spin text-accent" aria-label="Buscando locais" /> : null}
       {query ? <button type="button" aria-label="Limpar busca" onClick={() => { setQuery(""); setResults([]); setOpen(false); }} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-canvas"><X size={16} /></button> : null}
       {!query && current && onClear ? <button type="button" aria-label="Limpar seleção" onClick={onClear} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-canvas"><X size={16} /></button> : null}
       {allowGeolocation ? <button type="button" title="Usar minha localização atual" aria-label="Usar minha localização atual" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e7f3ea] text-accent hover:bg-[#d5ebdd]" onClick={onGeolocation}><LocateFixed size={18} /></button> : null}
@@ -124,10 +142,10 @@ export function LocationSearch({ label, placeholder, onPick, current, center, al
       {!busy && !error && results.length === 0 ? <div className="px-4 py-3 text-[13px] leading-relaxed text-muted">{purpose === "region" ? "Cidade não encontrada. Digite somente o nome da cidade." : "Nenhum resultado. Tente incluir bairro e cidade ou marque diretamente no mapa."}</div> : null}
       {visible.map((place, i) => <button
         type="button" role="option" aria-selected={active === i}
-        key={place.name + place.lat + "," + place.lng}
+        key={place.placeId || place.name + place.lat + "," + place.lng}
         className={"flex min-h-[59px] w-full items-center gap-3 border-b border-[#eff3ef] px-3.5 py-2.5 text-left last:border-0 hover:bg-[#f1f7f2] " + (active === i ? "bg-[#f7faf7]" : "")}
         onMouseEnter={() => setActive(i)}
-        onClick={() => selectPlace(place)}
+        onClick={() => void selectPlace(place)}
       >
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#eef5ef] text-accent"><MapPin size={16}/></span>
         <span className="min-w-0 flex-1">
@@ -137,7 +155,7 @@ export function LocationSearch({ label, placeholder, onPick, current, center, al
         {typeof place.distanceKm === "number" ? <span className="shrink-0 rounded-lg bg-[#edf5ed] px-2 py-1 text-[10px] font-bold text-accent">{place.distanceKm < 1 ? Math.round(place.distanceKm * 1000) + " m" : place.distanceKm.toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " km"}</span> : null}
       </button>)}
       {results.length > 5 && !showAll ? <button type="button" className="flex w-full items-center justify-center gap-1 py-2.5 text-xs font-bold text-accent hover:bg-canvas" onClick={() => setShowAll(true)}>Ver mais {results.length - 5} resultados <ChevronDown size={14}/></button> : null}
-      {!busy && results.length > 0 ? <p className="border-t border-[#edf2ed] px-3 py-2 text-[10px] text-muted">Dados OpenStreetMap · Confira o endereço antes de adicionar</p> : null}
+      {!busy && results.length > 0 ? <p className="border-t border-[#edf2ed] px-3 py-2 text-[11px] text-muted">{usingGoogle ? "Google Maps · Confira o endereço antes de adicionar" : "Dados OpenStreetMap · Confira o endereço antes de adicionar"}</p> : null}
     </div> : null}
   </div>;
 }

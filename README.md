@@ -89,3 +89,21 @@ O banco de desenvolvimento/produção inicial foi criado em 17/10/2026 (horário
 - URL pública: `https://wzddhduxemxvdiencjan.supabase.co`
 
 As 3 migrações deste diretório já foram aplicadas no projeto. Para conectar o frontend, preencha as variáveis `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` no ambiente de deploy, usando a chave publishable no painel **Project Settings → API Keys**. Não coloque service role em arquivos do frontend nem no GitHub. Configure também Auth → URL Configuration para o domínio da aplicação.
+
+## Migração opcional: Google Maps + Places (New)
+
+**Desligada por padrão:** sem a configuração abaixo, o Rotas GO continua usando o mapa Leaflet/OSM e a busca Photon em produção. Não misture resultados do Google Places com o mapa OSM; os termos do Google exigem Google Maps para exibir Places sobre um mapa.
+
+Habilite o faturamento no Google Cloud e as APIs:
+- Places API (New) para a busca por comércios, cidades e endereços;
+- Maps JavaScript API para renderizar os lugares pesquisados.
+
+Crie **duas chaves diferentes** e configure na Vercel:
+- \`GOOGLE_MAPS_SERVER_API_KEY\`: Places API (New), somente no servidor. Não use \`NEXT_PUBLIC_\` e nunca envie ao cliente.
+- \`NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY\`: Maps JavaScript API, restrita por referenciador HTTP aos domínios autorizados (\`https://rotas-go.vercel.app/*\` e previews específicas).
+- \`NEXT_PUBLIC_MAP_PROVIDER=google\`: **ative somente após configurar ambas as chaves**, conferir quotas e testar em preview, então faça redeploy.
+
+No backend, Google Places Autocomplete (New) retorna sugestões e IDs, e Place Details Essentials é consultada somente após o usuário escolher o endereço. Um token de sessão é usado por pesquisa interativa. Não há cache de respostas Google em servidor nem localStorage. Atenção: a legislação e os termos do Google impõem limites para armazenar dados obtidos de Places; antes de venda em escala, revise também o modelo de dados persistidos no Supabase, o uso de Place IDs e as atribuições e documentos de privacidade. O ORS segue fazendo a otimização dos caminhos a pé; use o Google somente para pesquisa e exibição.
+
+**Custos:** a ativação exige cobrança vinculada. Configure limites de quota e alertas de orçamento no Google Cloud antes de liberar para clientes.
+

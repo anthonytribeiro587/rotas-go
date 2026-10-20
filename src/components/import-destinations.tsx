@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { AlertCircle, Check, CheckCircle2, ChevronDown, FileSpreadsheet, LoaderCircle, MapPin, Search, UploadCloud, X } from "lucide-react";
 import { destinationsFromRows, normalizeHeader, parseDelimited, type ImportDestination, type RawCell } from "@/lib/import-destinations";
 import type { SearchResult } from "@/lib/types";
+import { selectCandidate } from "@/lib/place-candidates";
 
 type Preview = ImportDestination & {
   selected: boolean;
@@ -12,6 +13,7 @@ type Preview = ImportDestination & {
   busy: boolean;
   query: string;
   lookupError: string;
+  token: string;
 };
 type Props = {
   capacity: number;
@@ -98,7 +100,7 @@ export function ImportDestinations({ capacity, center, onAdd, onClose }: Props) 
       setItems(records.map((row, index) => ({
         ...row, selected: index < capacity && !row.error,
         confirmed: row.error || row.latitude === null || row.longitude === null ? null : makePoint(row, row.latitude, row.longitude),
-        choices: [], busy: false, query: defaultQuery(row), lookupError: ""
+        choices: [], busy: false, query: defaultQuery(row), lookupError: "", token: crypto.randomUUID()
       })));
       setMessage(records.length + " destinos lidos. Confira os endereços antes de adicioná-los à rota.");
     } catch (e) {
@@ -125,6 +127,7 @@ export function ImportDestinations({ capacity, center, onAdd, onClose }: Props) 
   async function fetchChoices(row: Preview, controller: AbortController, lookup: string) {
     const request = async (q: string) => {
       const params = new URLSearchParams({ q });
+      if (process.env.NEXT_PUBLIC_MAP_PROVIDER === "google") params.set("sessionToken", row.token);
       if (center) { params.set("lat", String(center.lat)); params.set("lng", String(center.lng)); }
       const response = await fetch("/api/search?" + params, { signal: controller.signal });
       const data = await response.json();
@@ -138,7 +141,7 @@ export function ImportDestinations({ capacity, center, onAdd, onClose }: Props) 
       }
       if (controller.signal.aborted || !activeRef.current) return;
       const ranked = [...places].sort((a, b) => scoreCandidate(row, b) - scoreCandidate(row, a));
-      const confident = ranked.length && confidentMatch(row, ranked[0]) && (ranked.length === 1 || scoreCandidate(row, ranked[0]) > scoreCandidate(row, ranked[1]) + 3);
+      const confident = ranked.length && !ranked[0].placeId && confidentMatch(row, ranked[0]) && (ranked.length === 1 || scoreCandidate(row, ranked[0]) > scoreCandidate(row, ranked[1]) + 3);
       updateRow(row.id, item => ({
         ...item,
         busy: false,
@@ -185,8 +188,21 @@ export function ImportDestinations({ capacity, center, onAdd, onClose }: Props) 
     await fetchChoices(row, controller, row.query);
   }
 
-  function accept(row: Preview, place: SearchResult) {
-    updateRow(row.id, current => ({ ...current, confirmed: makePoint(row, place.lat, place.lng), lookupError: "" }));
+  async function accept(row: Preview, place: SearchResult) {
+    updateRow(row.id, current => ({ ...current, busy: true, lookupError: "" }));
+    try {
+      const resolved = await selectCandidate(place, row.token);
+      if (!activeRef.current) return;
+      updateRow(row.id, current => ({
+        ...current, busy: false,
+        confirmed: { ...makePoint(row, resolved.lat, resolved.lng), placeId: resolved.placeId, source: resolved.source },
+        lookupError: ""
+      }));
+    } catch (e) {
+      if (activeRef.current) updateRow(row.id, current => ({
+        ...current, busy: false, lookupError: e instanceof Error ? e.message : "Não foi possível confirmar o endereço."
+      }));
+    }
   }
   function addSelected() {
     if (!valid) return;
@@ -251,7 +267,7 @@ export function ImportDestinations({ capacity, center, onAdd, onClose }: Props) 
                     </div>
                     {row.lookupError ? <p className="mt-2 text-[11px] text-[#9b5825]">{row.lookupError}</p> : null}
                     {row.choices.length ? <div className="mt-2 space-y-1 rounded-lg border border-[#e8ede8] p-1">
-                      {row.choices.slice(0,4).map((place,index) => <button type="button" key={index} className="flex w-full items-start gap-2 rounded-md px-2 py-2 text-left hover:bg-[#edf6f0]" onClick={() => accept(row, place)}><MapPin size={14} className="mt-0.5 shrink-0 text-accent"/><span className="min-w-0 flex-1"><span className="block truncate text-[12px] font-bold">{place.name}</span><span className="block truncate text-[11px] text-muted">{place.address}</span></span><Check size={14} className="mt-1 shrink-0 text-accent"/></button>)}
+                      {row.choices.slice(0,4).map((place,index) => <button type="button" key={index} className="flex w-full items-start gap-2 rounded-md px-2 py-2 text-left hover:bg-[#edf6f0]" onClick={() => void accept(row, place)}><MapPin size={14} className="mt-0.5 shrink-0 text-accent"/><span className="min-w-0 flex-1"><span className="block truncate text-[12px] font-bold">{place.name}</span><span className="block truncate text-[11px] text-muted">{place.address}</span></span><Check size={14} className="mt-1 shrink-0 text-accent"/></button>)}
                     </div> : null}
                   </div> : null}
                   {row.confirmed && row.latitude === null ? <button type="button" className="mt-2 text-[11px] font-bold text-accent underline" onClick={() => updateRow(row.id, v => ({ ...v, confirmed: null }))}>Trocar ponto escolhido</button> : null}

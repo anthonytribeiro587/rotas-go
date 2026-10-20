@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, Polyline, TileLayer, ZoomControl, useMap, useMapEvents } from "react-leaflet";
 import type { Point, Visit } from "@/lib/types";
+import GoogleRouteMap from "@/components/google-route-map";
 
 type Props = {
   start: Point | null;
@@ -55,6 +56,10 @@ export default function RouteMap({ start, end, stops, geometry, focus, pickMode 
     const trip = [start, ...stops, end].filter((p): p is Point => Boolean(p));
     return trip.length ? trip : focus ? [{ ...focus, id: "region", name: "Região", address: "" }] : [];
   }, [start, stops, end, focus]);
+
+  if (process.env.NEXT_PUBLIC_MAP_PROVIDER === "google") {
+    return <GoogleRouteMap start={start} end={end} stops={stops} geometry={geometry} focus={focus} pickMode={pickMode} draftPoint={draftPoint} onPick={onPick}/>;
+  }
 
   return <div className="relative h-full w-full">
     <MapContainer
