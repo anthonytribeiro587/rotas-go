@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SearchResult } from "@/lib/types";
+import { searchGooglePlaces } from "@/lib/google-places-server";
 
 export const runtime = "nodejs";
 
@@ -90,6 +91,7 @@ async function searchPhoton(q: string, center: { lat: number; lng: number } | nu
 }
 
 export async function GET(request: NextRequest) {
+  if (process.env.NEXT_PUBLIC_MAP_PROVIDER === "google") return searchGooglePlaces(request);
   const cityOnly = request.nextUrl.searchParams.get("mode") === "city";
   const rawQ = (request.nextUrl.searchParams.get("q") || "").trim().replace(/\s+/g, " ").slice(0, 120);
   const q = cityOnly ? rawQ.replace(/[,\s]+(?:RS|SC|PR|SP|RJ|MG|ES|BA|DF|GO|MT|MS|PA|AM|AC|AP|AL|CE|MA|PB|PE|PI|RN|RO|RR|SE|TO)$/i, "").trim() : rawQ;
