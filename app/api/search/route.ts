@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SearchResult } from "@/lib/types";
+import { searchGeoapify } from "@/lib/geoapify-search";
 
 export const runtime = "nodejs";
 
@@ -106,16 +107,17 @@ export async function GET(request: NextRequest) {
   const latStr = request.nextUrl.searchParams.get("lat"), lngStr = request.nextUrl.searchParams.get("lng");
   const lat = Number(latStr), lng = Number(lngStr);
   const center = latStr !== null && lngStr !== null && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng } : null;
-  const key = [cityOnly ? "city" : "all", norm(q), center?.lat.toFixed(3) || "", center?.lng.toFixed(3) || ""].join("|");
+  const provider = process.env.GEOAPIFY_API_KEY ? "geoapify" : "photon";
+  const key = [provider, cityOnly ? "city" : "all", norm(q), center?.lat.toFixed(3) || "", center?.lng.toFixed(3) || ""].join("|");
   const prior = cache.get(key);
   if (prior && now - prior.at < TTL) return NextResponse.json({ results: prior.data }, { headers: { "Cache-Control": "public, max-age=20, stale-while-revalidate=120" } });
   try {
     let pending = inflight.get(key);
-    if (!pending) { pending = searchPhoton(q, center, cityOnly); inflight.set(key, pending); }
+    if (!pending) { pending = provider === "geoapify" ? searchGeoapify(q, center, cityOnly, process.env.GEOAPIFY_API_KEY!) : searchPhoton(q, center, cityOnly); inflight.set(key, pending); }
     const results = await pending;
     if (cache.size > 250) cache.clear();
     cache.set(key, { at: now, data: results });
-    return NextResponse.json({ results }, { headers: { "Cache-Control": "public, max-age=20, stale-while-revalidate=120" } });
+    return NextResponse.json({ results, provider }, { headers: { "Cache-Control": "public, max-age=20, stale-while-revalidate=120" } });
   } catch (error) {
     console.error("Geocoding failed:", error instanceof Error ? error.message : "unknown");
     if (prior) return NextResponse.json({ results: prior.data, stale: true });
