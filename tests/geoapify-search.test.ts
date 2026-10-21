@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { mapGeoapifyResults } from "../src/lib/geoapify-search";
 describe("Geoapify geocoding adapter", () => {
+  it("tags city suggestions so the UI uses them as the search region", () => {
+    const result=mapGeoapifyResults({results:[{city:"Pomerode",lat:-26.739,lon:-49.176,result_type:"city",country_code:"br"}]},"Pomerode",null,false);
+    expect(result[0].kind).toBe("city");
+  });
   it("maps a Brazilian city with location", () => {
     const items = mapGeoapifyResults({results:[{name:"Pomerode",city:"Pomerode",state:"Santa Catarina",country_code:"br",result_type:"city",lat:-26.739,lon:-49.176}]},"Pomerode",null,true);
     expect(items).toHaveLength(1);
