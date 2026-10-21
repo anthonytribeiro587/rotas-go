@@ -20,7 +20,7 @@ export function mapGeoapifyResults(data: { results?: Candidate[] }, q: string, c
     const id = lat.toFixed(5) + "|" + lng.toFixed(5) + "|" + name.toLowerCase();
     if (seen.has(id)) continue;
     seen.add(id);
-    const place: SearchResult = { name, address, lat, lng, city, state: p.state || "", provider: "geoapify" };
+    const place: SearchResult = { name, address, lat, lng, city, state: p.state || "", provider: "geoapify", kind: p.result_type };
     if (center) {
       const rad = Math.PI / 180, dLat = (lat - center.lat) * rad, dLng = (lng - center.lng) * rad;
       const a = Math.sin(dLat / 2) ** 2 + Math.cos(center.lat * rad) * Math.cos(lat * rad) * Math.sin(dLng / 2) ** 2;
