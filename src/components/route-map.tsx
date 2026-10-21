@@ -27,7 +27,7 @@ function MapBounds({ points, geometry }: { points: Point[]; geometry: [number, n
     "::" + geometry.length + "::" + (geometry.length ? geometry[0].join(",") + geometry[geometry.length - 1].join(",") : "");
   useEffect(() => {
     const handle = window.setTimeout(() => map.invalidateSize(), 40);
-    if (points.length === 1) map.setView([points[0].lat, points[0].lng], 15, { animate: true });
+    if (points.length === 1) map.setView([points[0].lat, points[0].lng], points[0].id === "region" ? 12 : 15, { animate: true });
     else if (points.length > 1) {
       const bounds = L.latLngBounds(points.map(p => [p.lat, p.lng]));
       geometry.forEach(p => bounds.extend(p));

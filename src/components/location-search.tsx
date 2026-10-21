@@ -71,7 +71,7 @@ export function LocationSearch({ label, placeholder, onPick, current, center, al
       } finally {
         if (!controller.signal.aborted && id === sequence.current) setBusy(false);
       }
-    }, 240);
+    }, 360);
     return () => { clearTimeout(timer); controller.abort(); };
   }, [query, open, center?.lat, center?.lng, purpose]);
 
@@ -137,7 +137,7 @@ export function LocationSearch({ label, placeholder, onPick, current, center, al
         {typeof place.distanceKm === "number" ? <span className="shrink-0 rounded-lg bg-[#edf5ed] px-2 py-1 text-[10px] font-bold text-accent">{place.distanceKm < 1 ? Math.round(place.distanceKm * 1000) + " m" : place.distanceKm.toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " km"}</span> : null}
       </button>)}
       {results.length > 5 && !showAll ? <button type="button" className="flex w-full items-center justify-center gap-1 py-2.5 text-xs font-bold text-accent hover:bg-canvas" onClick={() => setShowAll(true)}>Ver mais {results.length - 5} resultados <ChevronDown size={14}/></button> : null}
-      {!busy && results.length > 0 ? <p className="border-t border-[#edf2ed] px-3 py-2 text-[10px] text-muted">Dados OpenStreetMap · Confira o endereço antes de adicionar</p> : null}
+      {!busy && results.length > 0 ? <p className="border-t border-[#edf2ed] px-3 py-2 text-[10px] text-muted">{results.some(p => p.provider === "geoapify") ? <>Pesquisa: <a href="https://www.geoapify.com/" target="_blank" rel="noopener noreferrer" className="underline">Geoapify</a> · Dados abertos · Confira o endereço</> : "Dados OpenStreetMap · Confira o endereço antes de adicionar"}</p> : null}
     </div> : null}
   </div>;
 }

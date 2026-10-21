@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { LocationSearch } from "@/components/location-search";
 import { ImportDestinations } from "@/components/import-destinations";
 import { ImportMapsLinks } from "@/components/import-maps-links";
+import MapPointChooser from "@/components/map-point-chooser";
 import { supabase } from "@/lib/supabase";
 import { cn, duration, makeId, mapsLink, meters } from "@/lib/utils";
 import type { Optimization, Point, SavedPlan, SearchResult, Visit, VisitStatus } from "@/lib/types";
@@ -111,7 +112,6 @@ export default function RoutePlanner() {
   const [showRegionSearch, setShowRegionSearch] = useState(false);
   const [pickingMap, setPickingMap] = useState(false);
   const [manualPoint, setManualPoint] = useState<{ lat: number; lng: number } | null>(null);
-  const [manualName, setManualName] = useState("");
   const [showGuide, setShowGuide] = useState(false);
   const [showImporter, setShowImporter] = useState(false);
   const [showMapsImporter, setShowMapsImporter] = useState(false);
@@ -173,7 +173,7 @@ export default function RoutePlanner() {
     setStart(null); setEnd(null); setStops([]); setOptimization(null);
     setManual(false); setSavedRouteId(null);
     setSearchRegion(null); setShowRegionSearch(false); setManualPoint(null);
-    setManualName(""); setPickingMap(false); setIsOptimizing(false);
+    setPickingMap(false); setIsOptimizing(false);
     setPage("plan"); setConfirmNew(false); setNotice("Novo roteiro iniciado. O histórico salvo permanece disponível.");
   }
   async function deletePlan(id: string) {
@@ -202,7 +202,13 @@ export default function RoutePlanner() {
     setNotice("");
   }
   function addStop(item: SearchResult) {
-    if (stops.length >= 18) { setNotice("Limite do MVP: 18 visitas por rota."); return; }
+    if (["city","town","village","municipality","district","suburb","county","locality","administrative","postcode"].includes(item.kind || "")) {
+      setSearchRegion(item);
+      setShowRegionSearch(false);
+      setNotice("Cidade " + item.name + " definida como região. Agora escolha uma loja no mapa ou pesquise pelo nome.");
+      return;
+    }
+    if (stops.length >= 18) { setNotice("Limite de 18 visitas por rota."); return; }
     if (stops.some((s) => Math.abs(s.lat - item.lat) < 0.000001 && Math.abs(s.lng - item.lng) < 0.000001)) {
       setNotice("Este local já está nas visitas de hoje.");
       return;
@@ -226,15 +232,6 @@ export default function RoutePlanner() {
       setNotice(accepted.length + " destinos importados. Confira a partida e chegada para calcular sua rota.");
     }
     return { added: accepted.length, duplicate: places.length - unique.length };
-  }
-  function addMapStop() {
-    if (!manualPoint) return;
-    const name = manualName.trim();
-    if (!name) { setNotice("Dê um nome para o local marcado."); return; }
-    addStop({ name, address: "Ponto marcado no mapa · " + manualPoint.lat.toFixed(5) + ", " + manualPoint.lng.toFixed(5), ...manualPoint });
-    setManualPoint(null);
-    setManualName("");
-    setPickingMap(false);
   }
   function openMapPicker() {
     setPickingMap(true);
@@ -456,12 +453,13 @@ export default function RoutePlanner() {
 
     <main className="planner-layout">
       <section className="map-panel" aria-label="Mapa do percurso">
-        <RouteMap start={start} end={end} stops={stops} geometry={optimization?.geometry || []} focus={searchRegion} pickMode={pickingMap} draftPoint={manualPoint} onPick={(point)=>{setManualPoint(point);setPickingMap(false);}}/>
+        <RouteMap start={start} end={end} stops={stops} geometry={optimization?.geometry || []} focus={searchRegion} pickMode={page === "plan" && !manualPoint} draftPoint={manualPoint} onPick={(point)=>{setManualPoint(point);setPickingMap(false);}}/>
         <div className="pointer-events-none absolute left-4 top-4 z-[500] rounded-xl border border-white/90 bg-white/95 px-3 py-2 shadow-[0_4px_16px_rgba(19,48,33,.09)] lg:left-9 lg:top-9">
           <div className="flex items-center gap-2 text-[11px] font-extrabold text-ink"><span className="h-2 w-2 rounded-full bg-accent"/> Mapa da rota</div>
           <p className="mt-0.5 text-[10px] text-muted">{optimization ? "Percurso calculado pelas ruas" : stops.length ? stops.length + " locais adicionados" : "Seus locais aparecerão aqui"}</p>
         </div>
-        {pickingMap ? <div className="pointer-events-none absolute inset-x-5 top-[78px] z-[600] mx-auto max-w-[360px] rounded-xl bg-ink px-4 py-3 text-center text-[12px] font-bold leading-relaxed text-white shadow-xl lg:top-24">Toque na posição exata do estabelecimento no mapa</div> : null}
+        {page === "plan" ? <button type="button" onClick={openMapPicker} className={"absolute right-4 z-[650] flex h-10 items-center gap-2 rounded-xl border px-3 text-[12px] font-extrabold shadow-lg lg:right-9 "+(optimization?"top-20 ":"top-4 ")+(pickingMap?"border-accent bg-accent text-white":"border-white bg-white text-accent")}><MapPin size={16}/> {pickingMap?"Toque no mapa":"Selecionar no mapa"}</button> : null}
+        {pickingMap ? <div className="pointer-events-none absolute inset-x-5 top-[78px] z-[600] mx-auto max-w-[360px] rounded-xl bg-ink px-4 py-3 text-center text-[12px] font-bold leading-relaxed text-white shadow-xl lg:top-24">Toque no mapa sobre a loja ou endereço que deseja visitar.</div> : null}
         {optimization ? <div className="pointer-events-none absolute right-4 top-4 z-[500] flex items-center gap-2 rounded-xl bg-ink px-3 py-2 text-xs font-bold text-white shadow-lg lg:right-9 lg:top-9"><Footprints size={15}/> {meters(optimization.distanceMeters)}</div> : null}
         <div className="pointer-events-none absolute bottom-7 left-4 z-[500] flex items-center gap-3 rounded-xl bg-white/95 px-3 py-2 text-[10px] font-bold text-muted lg:bottom-10 lg:left-9"><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-ink"/> Origem</span><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-accent"/> Visitas</span><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#e19c41]"/> Fim</span></div>
       </section>
@@ -515,7 +513,7 @@ export default function RoutePlanner() {
                 <button type="button" onClick={() => setShowImporter(true)} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#e5f2e9] px-3 py-3 text-xs font-extrabold text-accent transition-colors hover:bg-[#d8ebdd]"><FileSpreadsheet size={16}/> Importar planilha Excel/CSV</button>
                 <button type="button" onClick={() => setShowMapsImporter(true)} className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#b9cfc0] bg-white px-3 py-3 text-xs font-bold text-accent transition-colors hover:bg-[#eff7f0]"><Link2 size={15}/> Colar links do Google Maps</button>
               </div>
-              <button type="button" onClick={openMapPicker} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-bold text-accent hover:bg-[#edf5ee]"><MapPin size={15}/> Não encontrou a loja? Marcar manualmente no mapa</button>
+              <button type="button" onClick={openMapPicker} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-bold text-accent hover:bg-[#edf5ee]"><MapPin size={15}/> Ou toque no mapa para selecionar uma loja próxima</button>
             </div>
 
             {stops.length ? <div className="mt-4 space-y-2">
@@ -557,17 +555,16 @@ export default function RoutePlanner() {
 
     {showImporter ? <ImportDestinations capacity={Math.max(0,18-stops.length)} center={mapCenter} onAdd={addImportedStops} onClose={() => setShowImporter(false)}/> : null}
     {showMapsImporter ? <ImportMapsLinks capacity={Math.max(0,18-stops.length)} center={mapCenter} onAdd={addImportedStops} onClose={() => setShowMapsImporter(false)}/> : null}
-    {manualPoint ? <div className="fixed inset-x-3 bottom-[100px] z-[1450] mx-auto max-w-[420px] rounded-2xl border border-[#c9dfce] bg-white p-4 shadow-[0_18px_55px_rgba(8,48,28,.2)]">
-      <div className="mb-3 flex items-start justify-between gap-2">
-        <div><p className="text-[14px] font-extrabold text-ink">Local marcado no mapa</p><p className="mt-0.5 text-[11px] text-muted">Digite um nome para adicionar a visita.</p></div>
-        <button type="button" className="p-1 text-muted" aria-label="Cancelar ponto no mapa" onClick={()=>{setManualPoint(null);setManualName("");}}><X size={18}/></button>
-      </div>
-      <form onSubmit={event=>{event.preventDefault();addMapStop();}} className="flex items-center gap-2">
-        <input autoFocus maxLength={120} className="h-11 min-w-0 flex-1 rounded-xl border border-line bg-[#f8faf8] px-3 text-[13px] outline-none focus:border-accent" placeholder="Nome do comércio" value={manualName} onChange={event=>setManualName(event.target.value)}/>
-        <button type="submit" className="h-11 shrink-0 rounded-xl bg-accent px-4 text-xs font-bold text-white">Adicionar</button>
-      </form>
-      <button type="button" onClick={()=>{setManualPoint(null);openMapPicker();}} className="mt-2 text-[11px] font-bold text-accent">Escolher outro ponto</button>
-    </div> : null}
+    {manualPoint ? <MapPointChooser
+      lat={manualPoint.lat} lng={manualPoint.lng}
+      onClose={()=>{setManualPoint(null);setPickingMap(false);}}
+      onAnother={()=>{setManualPoint(null);setPickingMap(true);}}
+      onConfirm={(point,usage)=>{
+        if(usage==="visit")addStop(point);
+        else setPoint(usage,point);
+        setManualPoint(null);setPickingMap(false);
+      }}
+    /> : null}
     {confirmNew ? <div role="dialog" aria-modal="true" aria-label="Novo roteiro" className="fixed inset-0 z-[1800] flex items-center justify-center bg-[#0c261d]/45 px-4">
       <div className="w-full max-w-[380px] rounded-2xl bg-white p-5 shadow-2xl"><h2 className="text-lg font-extrabold text-ink">Começar novo roteiro?</h2><p className="mt-2 text-sm leading-relaxed text-muted">{unsaved ? "O roteiro atual não foi salvo e será descartado." : "O mapa e as visitas atuais serão limpos. Suas rotas salvas continuarão no Histórico."}</p><div className="mt-5 flex gap-2"><button type="button" onClick={()=>setConfirmNew(false)} className="h-11 flex-1 rounded-xl border border-line text-sm font-bold">Cancelar</button><button type="button" onClick={resetRoute} className="h-11 flex-1 rounded-xl bg-accent text-sm font-bold text-white">Novo roteiro</button></div></div>
     </div> : null}
