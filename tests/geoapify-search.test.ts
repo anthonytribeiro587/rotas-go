@@ -15,6 +15,20 @@ describe("Geoapify geocoding adapter", () => {
     ]},"Brazil",null,false);
     expect(rows.map(x=>x.name)).toEqual(["Brazil"]);
   });
+  it("does not confuse Esteio RS with unrelated cities called Esteios", () => {
+    const matches = mapGeoapifyResults({results: [
+      {name:"Esteio", city:"Esteio", state:"Rio Grande do Sul", result_type:"city",country_code:"br",lat:-29.85,lon:-51.18},
+      {name:"Esteios", city:"São Gabriel da Cachoeira",state:"Amazonas",result_type:"city",country_code:"br",lat:-0.13,lon:-67.09},
+      {name:"Esteios",city:"Luz",state:"Minas Gerais",result_type:"city",country_code:"br",lat:-19.81,lon:-45.68}
+    ]}, "Esteio", null, true);
+    expect(matches.map(x => x.name)).toEqual(["Esteio"]);
+  });
+  it("still allows partial city names while typing", () => {
+    const matches=mapGeoapifyResults({results:[
+      {city:"Pomerode",state:"Santa Catarina",result_type:"city",country_code:"br",lat:-26.74,lon:-49.17}
+    ]}, "Pome", null, true);
+    expect(matches).toHaveLength(1);
+  });
   it("keeps only municipalities for the city search mode", () => {
     const rows=mapGeoapifyResults({results:[
       {name:"Store",lat:-26.73,lon:-49.17,country_code:"br",result_type:"amenity"},
