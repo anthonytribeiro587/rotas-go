@@ -202,7 +202,7 @@ export default function RoutePlanner() {
     setNotice("");
   }
   function addStop(item: SearchResult) {
-    if (["city","town","village","municipality"].includes(item.kind || "")) {
+    if (["city","town","village","municipality","district","suburb","county","locality","administrative","postcode"].includes(item.kind || "")) {
       setSearchRegion(item);
       setShowRegionSearch(false);
       setNotice("Cidade " + item.name + " definida como região. Agora escolha uma loja no mapa ou pesquise pelo nome.");
