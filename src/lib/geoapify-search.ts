@@ -28,6 +28,15 @@ export function mapGeoapifyResults(data: { results?: Candidate[] }, q: string, c
     }
     result.push(place);
   }
+  if (cityOnly) {
+    // Reject unrelated municipalities that happen to contain a similarly named street.
+    const normalizeCity = (value: string) => value.normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const requested = normalizeCity(q);
+    const exact = result.filter(place => normalizeCity(place.name) === requested);
+    if (exact.length) return exact.slice(0, 8);
+    return result.filter(place => normalizeCity(place.name).startsWith(requested)).slice(0, 8);
+  }
   return result.slice(0, 8);
 }
 export async function searchGeoapify(query: string, center: LocationCenter, cityOnly: boolean, key: string): Promise<SearchResult[]> {
